@@ -9,3 +9,6 @@ next-env.d.ts
 .superpowers/
 .agents/
 skills-lock.json
+
+.vercel
+.env*
