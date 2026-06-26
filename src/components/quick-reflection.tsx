@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Send } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 
 const moods = [
   { emoji: "😊", label: "开心" },
@@ -10,19 +12,31 @@ const moods = [
 ] as const;
 
 export default function QuickReflection() {
+  const { user } = useAuth();
   const [content, setContent] = useState("");
   const [mood, setMood] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const handleSubmit = () => {
-    if (!content.trim()) return;
-    // TODO: 对接 Supabase reflections 表
-    setSubmitted(true);
-    setTimeout(() => {
-      setContent("");
-      setMood(null);
-      setSubmitted(false);
-    }, 2000);
+  const handleSubmit = async () => {
+    if (!content.trim() || !user) return;
+    setSaving(true);
+    const { error } = await supabase.from("reflections").insert({
+      user_id: user.id,
+      content: content.trim(),
+      mood: mood || "😊",
+      source: "web",
+    });
+    setSaving(false);
+
+    if (!error) {
+      setSubmitted(true);
+      setTimeout(() => {
+        setContent("");
+        setMood(null);
+        setSubmitted(false);
+      }, 2000);
+    }
   };
 
   return (
@@ -61,11 +75,11 @@ export default function QuickReflection() {
             </div>
             <button
               onClick={handleSubmit}
-              disabled={!content.trim()}
+              disabled={!content.trim() || saving}
               className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-[#42a5f5] text-white hover:bg-[#1e88e5] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
               <Send className="size-3.5" />
-              发送
+              {saving ? "保存中..." : "发送"}
             </button>
           </div>
         </>

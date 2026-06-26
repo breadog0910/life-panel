@@ -14,8 +14,10 @@ import {
   Bell,
   Settings,
   ChevronLeft,
+  LogOut,
 } from "lucide-react";
 import { useState } from "react";
+import { useAuth } from "@/lib/auth-context";
 
 const navItems = [
   { href: "/", label: "今日概览", icon: LayoutDashboard },
@@ -28,6 +30,30 @@ const navItems = [
   { href: "/reminders", label: "提醒管理", icon: Bell },
   { href: "/partner", label: "伙伴设置", icon: Settings },
 ];
+
+function UserFooter() {
+  const { user, signOut } = useAuth();
+
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="size-8 rounded-full bg-gradient-to-br from-[#90caf9] to-[#42a5f5] flex items-center justify-center text-sm shrink-0">
+          🐱
+        </div>
+        <span className="text-xs text-[#64b5f6] truncate" title={user?.email}>
+          {user?.email?.split("@")[0]}
+        </span>
+      </div>
+      <button
+        onClick={signOut}
+        className="p-1.5 rounded-lg hover:bg-white/50 text-[#64b5f6] hover:text-red-400 transition-colors"
+        title="退出登录"
+      >
+        <LogOut className="size-3.5" />
+      </button>
+    </div>
+  );
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -85,16 +111,15 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      {!collapsed && (
-        <div className="p-4 border-t border-[#bbdefb]">
-          <div className="flex items-center gap-2">
-            <div className="size-8 rounded-full bg-gradient-to-br from-[#90caf9] to-[#42a5f5] flex items-center justify-center text-sm">
-              🐱
-            </div>
-            <div className="text-xs text-[#64b5f6]">我的伙伴</div>
-          </div>
-        </div>
-      )}
+      <div className="p-3 border-t border-[#bbdefb]">
+        {collapsed ? (
+          <button title="退出" className="p-1.5 rounded-lg hover:bg-white/50 text-[#64b5f6] transition-colors w-full flex justify-center">
+            <LogOut className="size-4" />
+          </button>
+        ) : (
+          <UserFooter />
+        )}
+      </div>
     </aside>
   );
 }
