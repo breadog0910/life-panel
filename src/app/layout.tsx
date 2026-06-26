@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
-
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+import Sidebar from "@/components/sidebar";
+import BottomNav from "@/components/bottom-nav";
 
 export const metadata: Metadata = {
   title: "人生面板",
@@ -16,8 +15,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" className={cn("font-sans", geist.variable)}>
-      <body className="min-h-screen antialiased">{children}</body>
+    <html lang="zh-CN">
+      <body
+        className="min-h-screen bg-[var(--background)] antialiased"
+      >
+        <div className="flex min-h-screen">
+          <Sidebar />
+          <main className="flex-1 pb-20 md:pb-0 overflow-auto">
+            <div className="max-w-5xl mx-auto p-4 md:p-6">{children}</div>
+          </main>
+        </div>
+        <BottomNav />
+      </body>
     </html>
   );
 }
