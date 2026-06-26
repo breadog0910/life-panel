@@ -17,11 +17,13 @@ export default function QuickReflection() {
   const [mood, setMood] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (!content.trim() || !user) return;
     setSaving(true);
-    const { error } = await supabase.from("reflections").insert({
+    setError(null);
+    const { error: insertError } = await supabase.from("reflections").insert({
       user_id: user.id,
       content: content.trim(),
       mood: mood || "😊",
@@ -29,14 +31,16 @@ export default function QuickReflection() {
     });
     setSaving(false);
 
-    if (!error) {
-      setSubmitted(true);
-      setTimeout(() => {
-        setContent("");
-        setMood(null);
-        setSubmitted(false);
-      }, 2000);
+    if (insertError) {
+      setError("保存失败，请重试");
+      return;
     }
+    setSubmitted(true);
+    setTimeout(() => {
+      setContent("");
+      setMood(null);
+      setSubmitted(false);
+    }, 2000);
   };
 
   return (
@@ -50,11 +54,16 @@ export default function QuickReflection() {
         </div>
       ) : (
         <>
+          {error && (
+            <div className="mb-3 p-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+              {error}
+            </div>
+          )}
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="一句话记录今天的收获、感悟或反思..."
-            className="w-full border border-[#e3f2fd] rounded-lg p-3 text-sm resize-none h-20 focus:outline-none focus:ring-2 focus:ring-[#42a5f5]/30 focus:border-[#42a5f5] placeholder:text-[#90a4ae]"
+            className="w-full border border-[#e3f2fd] rounded-lg p-3 text-sm resize-none h-20 focus:outline-none focus:ring-2 focus:ring-[#42a5f5]/30 focus:border-[#e3f2fd] placeholder:text-[#90a4ae]"
           />
           <div className="flex items-center justify-between mt-3">
             <div className="flex gap-2">

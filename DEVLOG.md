@@ -286,3 +286,34 @@
 **项目完成度：** 全部 9 个功能模块 ✅ 已完成
 
 **Git 备份：** 待提交
+
+---
+
+### 2026-06-26 #16 — Bug 排查与修复
+
+**发现的问题列表：**
+
+| # | Bug 描述 | 文件 | 优先级 | 状态 |
+|---|----------|------|--------|------|
+| 1 | `stats/page.tsx` — `useEffect` 依赖中包含 `now`（new Date()），每次渲染都是新对象，可能导致无限循环 | `src/app/(main)/stats/page.tsx` | 高 | 待修复 |
+| 2 | `AppShell` 重复包裹 `AuthProvider`，与 `(main)/layout.tsx` 中的 `AppShell` 冲突 | `src/components/app-shell.tsx` | 高 | 待修复 |
+| 3 | `PomodoroCard` 每秒 `tick` 时都尝试插入数据库，性能极差 | `src/components/pomodoro-card.tsx` | 高 | 待修复 |
+| 4 | `BottomNav` 移动端只有 5 个导航项，缺失统计/复盘/提醒/伙伴 | `src/components/bottom-nav.tsx` | 中 | 待修复 |
+| 5 | `QuickReflection` 提交后没检查 `error` 就显示成功 | `src/components/quick-reflection.tsx` | 中 | 待修复 |
+| 6 | `TimePage` 计时器 `stopTimer` 直接用 `timerSeconds / 60` 取整，丢失余数秒数 | `src/app/(main)/time/page.tsx` | 中 | 待修复 |
+| 7 | `ScheduleCard` 用 `created_at` 过滤"今日"不准确，应该用日期部分 | `src/components/schedule-card.tsx` | 中 | 待修复 |
+| 8 | `CompanionPage` 收起面板后未重置编辑状态 | `src/app/companion/page.tsx` | 低 | 待修复 |
+| 9 | `GoalsPage` 没有验证 `deadline` 格式 | `src/app/(main)/goals/page.tsx` | 低 | 待修复 |
+| 10 | `CompanionPage` 的 `tick` useCallback 依赖数组为空，但函数内使用了 `user` | `src/app/companion/page.tsx` | 低 | 待修复 |
+
+**修复进度：**
+- [x] #1 stats useEffect 依赖问题 — 已修复（将 now 和 currentMonth 移入 useEffect 内部）
+- [x] #2 AppShell 重复 AuthProvider — **经验证非bug**：两个路由组 (main) 和 (companion) 各自独立使用 AuthProvider，是设计如此
+- [x] #3 PomodoroCard 性能问题 — **经验证非bug**：insert 只在 prev<=1 时执行一次，非每秒执行
+- [x] #4 BottomNav 导航不完整 — 已修复（扩展到 8 项：概览/日记/时间/记账/规划/复盘/统计/提醒）
+- [x] #5 QuickReflection 错误处理 — 已修复（添加 error 状态和错误提示）
+- [x] #6 TimePage 计时器分钟计算 — 已修复（Math.floor 改为 Math.round）
+- [x] #7 ScheduleCard 日期过滤 — 已修复（使用精确的今日开始/结束时间戳）
+- [x] #8 Companion 状态重置 — 已修复（handleCollapse 时重置表单状态）
+- [x] #9 Goals deadline 验证 — 已修复（formatDeadline 添加无效日期检查）
+- [x] #10 Companion tick 依赖 — **经验证非bug**：tick 函数不使用 user，依赖数组为空正确

@@ -99,6 +99,7 @@ export default function GoalsPage() {
 
   const formatDeadline = (d: string) => {
     const date = new Date(d);
+    if (isNaN(date.getTime())) return d; // Return raw value if invalid
     const now = new Date();
     const diff = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     return `${date.toLocaleDateString("zh-CN", { month: "short", day: "numeric" })}${diff < 0 ? " (已逾期)" : diff === 0 ? " (今天)" : ` (剩余${diff}天)`}`;

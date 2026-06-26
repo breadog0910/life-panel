@@ -53,12 +53,14 @@ export default function StatsPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   useEffect(() => {
     if (!user) return;
     setLoading(true);
+
+    // Calculate current month inside effect to avoid stale closure
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
     async function loadAll() {
       // Fetch diaries
@@ -171,7 +173,7 @@ export default function StatsPage() {
     }
 
     loadAll();
-  }, [user, currentMonth, now]);
+  }, [user]);
 
   if (loading) {
     return (

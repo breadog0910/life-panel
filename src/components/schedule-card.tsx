@@ -15,12 +15,15 @@ export default function ScheduleCard() {
 
   useEffect(() => {
     if (!user) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
     supabase
       .from("time_entries")
       .select("*")
       .eq("user_id", user.id)
-      .gte("created_at", today)
+      .gte("created_at", todayStart)
+      .lte("created_at", todayEnd)
       .order("created_at", { ascending: false })
       .limit(5)
       .then(({ data }) => {

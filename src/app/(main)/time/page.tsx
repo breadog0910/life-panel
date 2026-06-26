@@ -66,7 +66,7 @@ export default function TimePage() {
       return;
     }
     setTimerRunning(false);
-    const minutes = Math.floor(timerSeconds / 60);
+    const minutes = Math.round(timerSeconds / 60);
     await supabase.from("time_entries").insert({
       user_id: user.id,
       title: timerLabel || "计时记录",

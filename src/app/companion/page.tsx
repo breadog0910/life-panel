@@ -120,6 +120,11 @@ export default function CompanionPage() {
   const handleCollapse = () => {
     setExpanded(false);
     window.electronAPI?.collapseWindow();
+    // Reset form state
+    setContent("");
+    setMood(null);
+    setSubmitted(false);
+    setSaving(false);
   };
 
   const handleOpenWeb = () => {
