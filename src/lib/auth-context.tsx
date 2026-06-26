@@ -28,10 +28,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+
+    // Timeout: if Supabase doesn't respond in 8 seconds, show login form anyway
+    const timeout = setTimeout(() => {
+      if (!cancelled) {
+        console.warn("Supabase auth check timed out, showing login form");
+        setLoading(false);
+      }
+    }, 8000);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
+      clearTimeout(timeout);
+      if (!cancelled) {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
+    }).catch(() => {
+      // Supabase unreachable — show login form so user isn't stuck
+      clearTimeout(timeout);
+      if (!cancelled) {
+        setLoading(false);
+      }
     });
 
     const {
@@ -41,7 +60,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session?.user ?? null);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signUp = async (email: string, password: string) => {

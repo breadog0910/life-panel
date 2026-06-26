@@ -145,3 +145,28 @@
 - `66868e0` — 日记 CRUD + 时间安排 + 复盘汇总
 
 **下一步：** 部署到 Vercel
+
+---
+
+### 2026-06-26 #11 — Vercel 部署成功 ✅
+
+**完成内容：**
+- ✅ 项目部署到 Vercel，生产环境就绪
+- ✅ 域名：https://life-panel-phi.vercel.app（别名）
+- ✅ 环境变量 `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` 已持久化到 Vercel 项目
+- ✅ Supabase Auth 回调 URL 已更新（Vercel + localhost）
+- ✅ Supabase 客户端改为延迟初始化（Proxy 模式，避免构建时 env 缺失报错）
+- ✅ 添加 `vercel.json` 明确框架为 Next.js
+- ✅ 添加 CSS 模块 TypeScript 类型声明（修复类型检查错误）
+- ✅ 本地构建 + Vercel 构建均通过（12 个页面全部静态生成成功）
+
+**解决的问题：**
+- `supabaseUrl is required` — 静态页面生成时 env 不可用 → Proxy 延迟初始化
+- `No Output Directory named "public"` — Vercel 框架检测问题 → vercel.json 指定 nextjs
+- CSS import type error → 添加 css.d.ts 声明文件
+
+**Git 备份：**
+- `bc8f0de` — 添加 CSS TypeScript 声明文件
+- `7bde121` — Vercel 部署成功
+
+**下一步：** 第 2 步 — Electron 悬浮伙伴
