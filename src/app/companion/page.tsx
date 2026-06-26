@@ -1,17 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import {
-  Play,
-  Pause,
-  RotateCcw,
-  Send,
-  Globe,
-} from "lucide-react";
+import { Play, Pause, RotateCcw, Send, Globe } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
-
-// ── Types ───────────────────────────────────────────────
 
 declare global {
   interface Window {
@@ -25,7 +17,7 @@ declare global {
 }
 
 const moods = ["😊", "😐", "😢", "😡"] as const;
-const DEFAULT_TIME = 25 * 60; // 25 min
+const DEFAULT_TIME = 25 * 60;
 
 const idlePhrases = [
   "今天也要加油呀～",
@@ -34,8 +26,6 @@ const idlePhrases = [
   "摸摸头～",
   "有什么想说的吗？",
 ];
-
-// ── Component ─────────────────────────────────────────────
 
 export default function CompanionPage() {
   const { user } = useAuth();
@@ -55,24 +45,18 @@ export default function CompanionPage() {
 
   useEffect(() => {
     let cancelled = false;
-
     function showBubble() {
       if (cancelled) return;
       const phrase = idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
       setBubbleText(phrase);
       bubbleTimerRef.current = setTimeout(() => {
         if (!cancelled) setBubbleText("");
-        // Next bubble in 8-20 seconds
         if (!cancelled) {
-          const delay = 8000 + Math.random() * 12000;
-          bubbleTimerRef.current = setTimeout(showBubble, delay);
+          bubbleTimerRef.current = setTimeout(showBubble, 8000 + Math.random() * 12000);
         }
       }, 3000);
     }
-
-    // First bubble after 3 seconds
     const init = setTimeout(showBubble, 3000);
-
     return () => {
       cancelled = true;
       clearTimeout(init);
@@ -111,11 +95,12 @@ export default function CompanionPage() {
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
 
-  // ── Toggle expand/collapse ───────────────────────────
+  // ── Expand / Collapse ────────────────────────────────
 
   const handleCharacterClick = () => {
     if (!expanded) {
       setExpanded(true);
+      // Electron: resize window; Edge: just CSS transition
       window.electronAPI?.expandWindow();
     }
   };
@@ -123,6 +108,14 @@ export default function CompanionPage() {
   const handleCollapse = () => {
     setExpanded(false);
     window.electronAPI?.collapseWindow();
+  };
+
+  const handleOpenWeb = () => {
+    if (window.electronAPI) {
+      window.electronAPI.openWebPanel();
+    } else {
+      window.open("https://life-panel-phi.vercel.app", "_blank");
+    }
   };
 
   // ── Submit reflection ─────────────────────────────────
@@ -144,55 +137,42 @@ export default function CompanionPage() {
   };
 
   return (
-    <div
-      className="w-full h-full flex flex-col items-center justify-center"
-      style={{ ["WebkitAppRegion" as any]: "no-drag" }}
-    >
+    <div className="w-full h-screen flex flex-col items-center justify-center">
       {/* ── IDLE STATE ────────────────────────────────── */}
       {!expanded && (
         <div
-          className="relative flex flex-col items-center cursor-pointer group"
+          className="relative flex flex-col items-center cursor-pointer group py-4"
           onClick={handleCharacterClick}
-          style={{ ["WebkitAppRegion" as any]: "drag" }}
         >
           {/* Speech bubble */}
           {bubbleText && (
-            <div
-              className="absolute -top-12 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm text-[#1a3a5c] text-xs px-3 py-1.5 rounded-2xl shadow-md whitespace-nowrap animate-bubble-in border border-[#e3f2fd]"
-              style={{
-                animation: "bubbleIn 0.3s ease-out",
-              }}
-            >
+            <div className="mb-2 bg-white/90 backdrop-blur-sm text-[#1a3a5c] text-xs px-3 py-1.5 rounded-2xl shadow-md whitespace-nowrap animate-bubble-in border border-[#e3f2fd] relative">
               {bubbleText}
               <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-white/90 border-r border-b border-[#e3f2fd] rotate-45" />
             </div>
           )}
 
           {/* Character */}
-          <div className="text-6xl animate-breathe select-none drop-shadow-lg">
+          <div className="text-6xl animate-breathe select-none drop-shadow-lg transition-transform group-hover:scale-110">
             🐱
           </div>
-          <span className="text-[10px] text-[#5c8dc9] mt-1 font-medium">
-            小橘
-          </span>
+          <span className="text-[10px] text-[#5c8dc9] mt-1 font-medium">小橘</span>
+          <span className="text-[9px] text-[#90a4ae] mt-0.5 opacity-60">点击打开面板</span>
         </div>
       )}
 
       {/* ── EXPANDED STATE ────────────────────────────── */}
       {expanded && (
-        <div
-          className="w-full h-full bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border border-[#e3f2fd] flex flex-col overflow-hidden"
-          style={{ minHeight: "420px" }}
-        >
+        <div className="w-full h-full bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-[#e3f2fd] flex flex-col overflow-hidden max-w-[320px] mx-auto my-2">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#e3f2fd]">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#e3f2fd] shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-2xl">🐱</span>
               <span className="font-semibold text-[#1565c0] text-sm">小橘</span>
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => window.electronAPI?.openWebPanel()}
+                onClick={handleOpenWeb}
                 className="p-1.5 rounded-lg hover:bg-[#f0f6ff] text-[#5c8dc9] transition-colors"
                 title="打开网页面板"
               >
@@ -208,7 +188,7 @@ export default function CompanionPage() {
           </div>
 
           {/* Pomodoro */}
-          <div className="px-4 py-3 border-b border-[#e3f2fd]">
+          <div className="px-4 py-3 border-b border-[#e3f2fd] shrink-0">
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-semibold text-[#1565c0] text-xs flex items-center gap-1.5">
                 <span>🍅</span> 番茄钟
@@ -243,18 +223,15 @@ export default function CompanionPage() {
           </div>
 
           {/* Quick actions */}
-          <div className="flex gap-2 px-4 py-2 border-b border-[#e3f2fd]">
-            <button
-              onClick={handleCollapse}
-              className="flex-1 text-xs py-1.5 rounded-lg bg-[#f0f6ff] text-[#5c8dc9] hover:bg-[#e3f2fd] transition-colors"
-            >
+          <div className="flex gap-2 px-4 py-2 border-b border-[#e3f2fd] shrink-0">
+            <button className="flex-1 text-xs py-1.5 rounded-lg bg-[#f0f6ff] text-[#5c8dc9] hover:bg-[#e3f2fd] transition-colors">
               ⏱️ 计时
             </button>
             <button className="flex-1 text-xs py-1.5 rounded-lg bg-[#f0f6ff] text-[#5c8dc9] hover:bg-[#e3f2fd] transition-colors">
               📅 日程
             </button>
             <button
-              onClick={() => window.electronAPI?.openWebPanel()}
+              onClick={handleOpenWeb}
               className="flex-1 text-xs py-1.5 rounded-lg bg-[#f0f6ff] text-[#5c8dc9] hover:bg-[#e3f2fd] transition-colors"
             >
               🖥️ 网页
@@ -262,15 +239,13 @@ export default function CompanionPage() {
           </div>
 
           {/* Reflection */}
-          <div className="flex-1 flex flex-col px-4 py-3">
-            <h3 className="font-semibold text-[#1565c0] text-xs mb-2 flex items-center gap-1.5">
+          <div className="flex-1 flex flex-col px-4 py-3 min-h-0">
+            <h3 className="font-semibold text-[#1565c0] text-xs mb-2 flex items-center gap-1.5 shrink-0">
               <span>💡</span> 今天学到了什么？
             </h3>
             {submitted ? (
               <div className="flex-1 flex items-center justify-center">
-                <span className="text-[#42a5f5] font-medium text-sm">
-                  ✅ 已记录！干得漂亮～
-                </span>
+                <span className="text-[#42a5f5] font-medium text-sm">✅ 已记录！干得漂亮～</span>
               </div>
             ) : (
               <>
@@ -278,22 +253,18 @@ export default function CompanionPage() {
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="一句话记录今天的收获..."
-                  className="w-full border border-[#e3f2fd] rounded-xl p-2.5 text-xs resize-none h-16 focus:outline-none focus:ring-2 focus:ring-[#42a5f5]/30 focus:border-[#42a5f5] placeholder:text-[#90a4ae] bg-white/70"
+                  className="w-full border border-[#e3f2fd] rounded-xl p-2.5 text-xs resize-none h-16 focus:outline-none focus:ring-2 focus:ring-[#42a5f5]/30 focus:border-[#42a5f5] placeholder:text-[#90a4ae] bg-white/70 shrink-0"
                 />
-                <div className="flex items-center justify-between mt-2">
+                <div className="flex items-center justify-between mt-2 shrink-0">
                   <div className="flex gap-1.5">
                     {moods.map((m) => (
                       <button
                         key={m}
                         onClick={() => setMood(m)}
                         className={`text-lg px-1.5 py-0.5 rounded-lg transition-all ${
-                          mood === m
-                            ? "bg-[#e3f2fd] scale-110"
-                            : "opacity-40 hover:opacity-70"
+                          mood === m ? "bg-[#e3f2fd] scale-110" : "opacity-40 hover:opacity-70"
                         }`}
-                        title={
-                          m === "😊" ? "开心" : m === "😐" ? "平常" : m === "😢" ? "低落" : "生气"
-                        }
+                        title={m === "😊" ? "开心" : m === "😐" ? "平常" : m === "😢" ? "低落" : "生气"}
                       >
                         {m}
                       </button>
