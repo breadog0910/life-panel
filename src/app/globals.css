@@ -138,6 +138,17 @@
   }
 }
 
+/* ── Electron transparent window mode ─────────────────── */
+html.electron-mode,
+html.electron-mode body {
+  background: transparent !important;
+}
+
+/* Ensure companion page root is transparent in electron */
+html.electron-mode body > div {
+  background: transparent;
+}
+
 @keyframes breathe {
   0%,
   100% {

@@ -30,6 +30,18 @@ const idlePhrases = [
 export default function CompanionPage() {
   const { user } = useAuth();
   const [expanded, setExpanded] = useState(false);
+  const [isElectron, setIsElectron] = useState(false);
+
+  // Detect Electron and enable transparent mode
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.electronAPI) {
+      setIsElectron(true);
+      document.documentElement.classList.add("electron-mode");
+      return () => {
+        document.documentElement.classList.remove("electron-mode");
+      };
+    }
+  }, []);
   const [timeLeft, setTimeLeft] = useState(DEFAULT_TIME);
   const [isRunning, setIsRunning] = useState(false);
   const [pomodoroCount, setPomodoroCount] = useState(0);

@@ -5,5 +5,9 @@ export default function MainLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <AppShell>{children}</AppShell>;
+  return (
+    <div className="min-h-screen bg-[var(--background)]">
+      <AppShell>{children}</AppShell>
+    </div>
+  );
 }

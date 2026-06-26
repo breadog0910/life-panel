@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 
 const moods = ["😊", "😐", "😢", "😡"] as const;
 type Mood = (typeof moods)[number];
@@ -26,7 +28,52 @@ function formatDate(): string {
 }
 
 export default function GreetingBar() {
+  const { user } = useAuth();
   const [selectedMood, setSelectedMood] = useState<Mood | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Load today's mood from Supabase on mount
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("diaries")
+      .select("mood")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .is("deleted_at", null)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.mood && moods.includes(data.mood as Mood)) {
+          setSelectedMood(data.mood as Mood);
+        }
+      });
+  }, [user, today]);
+
+  const handleMoodClick = async (mood: Mood) => {
+    setSelectedMood(mood);
+    if (!user) return;
+
+    // Upsert: update existing diary for today, or create mood-only entry
+    const { data: existing } = await supabase
+      .from("diaries")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase.from("diaries").update({ mood }).eq("id", existing.id);
+    } else {
+      await supabase.from("diaries").insert({
+        user_id: user.id,
+        date: today,
+        mood,
+        content: "",
+        tags: [],
+      });
+    }
+  };
 
   return (
     <div className="bg-gradient-to-r from-[#e3f2fd] to-[#fff9c4] rounded-card p-5 md:p-6 flex items-center justify-between">
@@ -40,7 +87,7 @@ export default function GreetingBar() {
         {moods.map((mood) => (
           <button
             key={mood}
-            onClick={() => setSelectedMood(mood)}
+            onClick={() => handleMoodClick(mood)}
             className={`text-2xl md:text-3xl p-1.5 rounded-xl transition-all ${
               selectedMood === mood
                 ? "bg-white shadow-md scale-110"

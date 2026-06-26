@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "companion": "start \"\" \"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe\" --app=http://localhost:3000/companion --window-size=320,460 --disable-extensions --no-first-run",
-    "electron:dev": "concurrently -n next,electron -c blue,green \"next dev\" \"wait-on http://localhost:3000 && electron desktop/main.js\"",
-    "electron": "electron desktop/main.js"
+    "companion": "pythonw desktop/companion.py",
+    "electron:dev": "concurrently -n next,electron -c blue,green \"next dev\" \"wait-on http://localhost:3000 && python desktop/companion.py\"",
+    "electron": "python desktop/companion.py"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

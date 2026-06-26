@@ -2,25 +2,55 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Play, Pause, RotateCcw } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 
 const DEFAULT_TIME = 25 * 60; // 25 minutes in seconds
 
 export default function PomodoroCard() {
+  const { user } = useAuth();
   const [timeLeft, setTimeLeft] = useState(DEFAULT_TIME);
   const [isRunning, setIsRunning] = useState(false);
   const [pomodoroCount, setPomodoroCount] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Load today's pomodoro count on mount
+  useEffect(() => {
+    if (!user) return;
+    const today = new Date().toISOString().slice(0, 10);
+    supabase
+      .from("time_entries")
+      .select("pomodoro_count")
+      .eq("user_id", user.id)
+      .gte("created_at", today)
+      .then(({ data }) => {
+        if (data) {
+          const total = data.reduce((sum, e) => sum + (e.pomodoro_count || 0), 0);
+          setPomodoroCount(total);
+        }
+      });
+  }, [user]);
 
   const tick = useCallback(() => {
     setTimeLeft((prev) => {
       if (prev <= 1) {
         setIsRunning(false);
         setPomodoroCount((c) => c + 1);
+        // Save completed pomodoro session to Supabase
+        if (user) {
+          supabase.from("time_entries").insert({
+            user_id: user.id,
+            title: "🍅 番茄钟",
+            duration_minutes: 25,
+            pomodoro_count: 1,
+            tags: ["番茄钟"],
+          });
+        }
         return DEFAULT_TIME;
       }
       return prev - 1;
     });
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (isRunning) {

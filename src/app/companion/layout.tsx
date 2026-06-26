@@ -2,7 +2,6 @@ import CompanionShell from "./companion-shell";
 
 export const metadata = {
   title: "悬浮伙伴",
-  description: "桌面悬浮伙伴面板",
 };
 
 export default function CompanionLayout({
@@ -11,8 +10,14 @@ export default function CompanionLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-transparent overflow-hidden select-none w-screen h-screen">
+    <>
+      {/* Detect Electron BEFORE hydration to avoid white flash */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `try { if (window.electronAPI) { document.documentElement.classList.add('electron-mode'); } } catch(e) {}`,
+        }}
+      />
       <CompanionShell>{children}</CompanionShell>
-    </div>
+    </>
   );
 }

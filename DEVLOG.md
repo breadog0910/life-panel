@@ -206,3 +206,83 @@
 **Git 备份：** 待提交
 
 **下一步：** 继续开发剩余模块（记账/目标/统计/提醒），或等待 Electron 透明窗口方案
+
+---
+
+### 2026-06-26 #13 — Python tkinter 悬浮伙伴重写 ✅
+
+**完成内容：**
+- ✅ 从 Electron → Python tkinter 技术方案切换（`-transparentcolor` 魔法透明）
+- ✅ 三模式角色渲染：Emoji 预设 / 自定义图片（PNG/JPG via PIL）/ GIF 动图（逐帧播放）
+- ✅ 呼吸动画 / 随机气泡 / 点击反应 / 拖拽移动
+- ✅ 右键菜单：打开网页面板 / 设置 / 退出
+- ✅ 位置持久化（companion_position.json）
+- ✅ 配置热加载（5 秒轮询 companion_config.json mtime）
+- ✅ PID 文件机制 → 网页端可检测/控制进程启停
+
+**关键文件：**
+| 文件 | 说明 |
+|------|------|
+| `desktop/companion.py` | tkinter 悬浮窗主程序 |
+| `desktop/companion_config.json` | 桥接配置文件 |
+| `desktop/companion.pid` | 进程 ID（启停控制） |
+| `companion-start.bat` | 一键启动 pythonw |
+
+**解决的关键问题：**
+- tkinter PhotoImage 不支持 PNG → 改用 PIL.Image + ImageTk
+- 网页上传图片不可见 → 同时保存到 `public/companion/` 和 `desktop/`
+- 点击不可开浏览器 → 改为显示反应气泡
+
+**Git 备份：** 待提交
+
+---
+
+### 2026-06-26 #14 — 伙伴设置 Web 面板完成 ✅
+
+**完成内容：**
+- ✅ `/partner` 设置页面：角色预览 + 模式切换 + 图片上传 + 昵称/行为设置
+- ✅ API Routes：`/api/partner/config`（读写配置）、`/api/partner/upload`（图片上传）
+- ✅ `/api/partner/companion`（GET 状态 + POST 启动/停止）→ PID 文件 + tasklist/taskkill
+- ✅ 9 个预设角色：🐱🐶🐰🐼🦊🐸😺🐻🐧
+- ✅ 支持上传自定义 PNG/JPG/GIF 图片
+- ✅ 状态卡片：实时轮询悬浮窗运行状态 + 一键启停
+
+**文件清单：**
+| 文件 | 说明 |
+|------|------|
+| `src/components/partner-settings-form.tsx` | 设置表单组件 |
+| `src/app/api/partner/config/route.ts` | 配置 CRUD API |
+| `src/app/api/partner/upload/route.ts` | 图片上传 API |
+| `src/app/api/partner/companion/route.ts` | 启停控制 API |
+
+**Git 备份：** 待提交
+
+---
+
+### 2026-06-26 #15 — P1 功能全部实现 ✅
+
+**完成内容：**
+- ✅ **记账页面** — 收支 CRUD + 日期分组账本 + 月度汇总（收入/支出/结余）+ 月份筛选
+- ✅ **目标页面** — CRUD + 进度条 + 状态筛选（进行中/已完成/已放弃）+ 截止日期倒计时
+- ✅ **提醒页面** — CRUD + 自定义 toggle 开关 + 重复规则（每天/每周/单次）+ 时间选择器
+- ✅ **统计页面** — 跨表数据聚合 + 纯 CSS 柱状图（心情/时间/支出/收入）
+- ✅ **首页改进** — GreetingBar 心情持久化（upsert diaries）、PomodoroCard 番茄数据持久化（写入 time_entries）、ScheduleCard 接入 Supabase 真实数据
+- ✅ **README.md** — 项目文档
+
+**修改/新建文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/app/(main)/finance/page.tsx` | 替换（完整记账 CRUD） |
+| `src/app/(main)/goals/page.tsx` | 替换（完整目标 CRUD） |
+| `src/app/(main)/reminders/page.tsx` | 替换（完整提醒 CRUD） |
+| `src/app/(main)/stats/page.tsx` | 替换（跨表统计 + CSS 图表） |
+| `src/components/greeting-bar.tsx` | 修改（心情持久化） |
+| `src/components/pomodoro-card.tsx` | 修改（番茄数据持久化） |
+| `src/components/schedule-card.tsx` | 替换（Supabase 数据接入） |
+| `README.md` | 新建 |
+| `REQUIREMENTS.md` | 更新状态 |
+| `DEVLOG.md` | 更新日志 |
+
+**项目完成度：** 全部 9 个功能模块 ✅ 已完成
+
+**Git 备份：** 待提交

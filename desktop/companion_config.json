@@ -1,0 +1,9 @@
+{
+  "mode": "image",
+  "character": "🐰",
+  "character_id": "rabbit",
+  "nickname": "小白",
+  "breathing_enabled": true,
+  "bubble_enabled": true,
+  "image_path": "companion_image.png"
+}
