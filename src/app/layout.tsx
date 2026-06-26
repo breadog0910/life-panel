@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { cn } from "@/lib/utils";
-import Sidebar from "@/components/sidebar";
-import BottomNav from "@/components/bottom-nav";
+import AppShell from "@/components/app-shell";
 
 export const metadata: Metadata = {
   title: "人生面板",
@@ -16,16 +14,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN">
-      <body
-        className="min-h-screen bg-[var(--background)] antialiased"
-      >
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 pb-20 md:pb-0 overflow-auto">
-            <div className="max-w-5xl mx-auto p-4 md:p-6">{children}</div>
-          </main>
-        </div>
-        <BottomNav />
+      <body className="min-h-screen bg-[var(--background)] antialiased">
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

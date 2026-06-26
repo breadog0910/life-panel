@@ -96,3 +96,20 @@
 - `076adfe` — feat: 布局框架 + 首页仪表盘 + 全部页面路由 + 晴空蓝主题
 
 **下一步：** 创建 Supabase 项目 → 建表 → 认证
+
+---
+
+### 2026-06-26 #8 — Supabase 数据库建表完成 ✅
+
+**项目信息：**
+- URL: `meyatacfvwhzdlpogwoe.supabase.co`
+- 7 张表已在 PostgreSQL 中创建
+- 所有表启用 RLS（Row Level Security），用户只能读写自己的数据
+- reflections 表已加入 Realtime 发布（悬浮窗 ↔ 网页实时同步）
+
+**创建的表：** diaries, time_entries, reflections, transactions, goals, reminders, partner_config
+
+**Git 备份：**
+- `c188cfc` — Supabase 环境 + SQL 建表脚本
+
+**下一步：** 实现邮箱认证（登录/注册）
