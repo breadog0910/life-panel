@@ -1,0 +1,167 @@
+// Electron 42+ uses electron/main as the entry point
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, screen } =
+  require("electron/main");
+const path = require("path");
+
+let win = null;
+let tray = null;
+let isExpanded = false;
+let isQuitting = false;
+
+// Prevent multiple instances
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+    }
+  });
+}
+
+// ── Window ──────────────────────────────────────────────
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 128,
+    height: 128,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    hasShadow: false,
+    focusable: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  // Default position: bottom-right corner
+  const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
+  win.setPosition(screenW - 160, screenH - 160);
+
+  // Load Next.js dev server
+  win.loadURL("http://localhost:3000/companion");
+
+  // Auto-collapse when window loses focus (only when expanded)
+  win.on("blur", () => {
+    if (isExpanded) collapseWindow();
+  });
+
+  win.on("close", (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      win.hide();
+    }
+  });
+}
+
+// ── Window resize ───────────────────────────────────────
+
+function expandWindow() {
+  if (isExpanded) return;
+  isExpanded = true;
+  const [x, y] = win.getPosition();
+  win.setBounds({
+    x: Math.max(0, x - 100),
+    y: Math.max(0, y - 350),
+    width: 320,
+    height: 460,
+  });
+  win.setSkipTaskbar(false);
+}
+
+function collapseWindow() {
+  if (!isExpanded) return;
+  isExpanded = false;
+  const [x, y] = win.getPosition();
+  win.setBounds({
+    x: x + 96,
+    y: y + 350,
+    width: 128,
+    height: 128,
+  });
+  win.setSkipTaskbar(true);
+}
+
+// ── Tray ────────────────────────────────────────────────
+
+function createTray() {
+  // Simple 16x16 orange cat-colored icon (programmatic)
+  const icon = nativeImage.createFromDataURL(
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAFklEQVR4Ae3BMQEAAADCIPunNsVeYAAA0AIJjgABTf5n6AAAAABJRU5ErkJggg=="
+  );
+
+  tray = new Tray(icon.resize({ width: 16, height: 16 }));
+  tray.setToolTip("人生面板 — 悬浮伙伴");
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "🖥️ 打开网页面板",
+      click: () => shell.openExternal("https://life-panel-phi.vercel.app"),
+    },
+    { type: "separator" },
+    {
+      label: "🐱 显示/隐藏伙伴",
+      click: () => {
+        if (win.isVisible()) win.hide();
+        else win.show();
+      },
+    },
+    { type: "separator" },
+    {
+      label: "❌ 退出",
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+  tray.on("double-click", () => {
+    if (win.isVisible()) win.hide();
+    else win.show();
+  });
+}
+
+// ── IPC Handlers ────────────────────────────────────────
+
+ipcMain.handle("expand-window", () => {
+  expandWindow();
+  return isExpanded;
+});
+
+ipcMain.handle("collapse-window", () => {
+  collapseWindow();
+  return isExpanded;
+});
+
+ipcMain.handle("get-window-position", () => {
+  const [x, y] = win.getPosition();
+  return { x, y };
+});
+
+ipcMain.handle("open-web-panel", () => {
+  shell.openExternal("https://life-panel-phi.vercel.app");
+});
+
+// ── App lifecycle ───────────────────────────────────────
+
+app.whenReady().then(() => {
+  createWindow();
+  createTray();
+
+  app.on("activate", () => {
+    if (!win) createWindow();
+    else win.show();
+  });
+});
+
+app.on("before-quit", () => {
+  isQuitting = true;
+});

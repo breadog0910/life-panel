@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "companion": "start \"\" \"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe\" --app=http://localhost:3000/companion --window-size=320,460 --disable-extensions --no-first-run",
+    "electron:dev": "concurrently -n next,electron -c blue,green \"next dev\" \"wait-on http://localhost:3000 && electron desktop/main.js\"",
+    "electron": "electron desktop/main.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -27,8 +30,11 @@
     "@types/node": "^26.0.1",
     "@types/react": "^19.2.17",
     "autoprefixer": "^10.5.2",
+    "concurrently": "^10.0.3",
+    "electron": "^31.7.7",
     "postcss": "^8.5.15",
     "tailwindcss": "^4.3.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "wait-on": "^9.0.10"
   }
 }

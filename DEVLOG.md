@@ -148,7 +148,7 @@
 
 ---
 
-### 2026-06-26 #11 — Vercel 部署成功 ✅
+### 2026-06-26 #11 — Vercel 部署成功 ✅但没法使用国内无法访问
 
 **完成内容：**
 - ✅ 项目部署到 Vercel，生产环境就绪
@@ -170,3 +170,39 @@
 - `7bde121` — Vercel 部署成功
 
 **下一步：** 第 2 步 — Electron 悬浮伙伴
+
+---
+
+### 2026-06-26 #12 — 桌面悬浮伙伴开发 ✅（Edge App 模式）
+
+**完成内容：**
+- ✅ 悬浮伙伴专用页面 `/companion`（独立布局，无 AppShell）
+  - 🐱 Q版角色渲染（Emoji + CSS 呼吸动画 + 随机气泡）
+  - 🍅 内置番茄钟（25分钟倒计时，开始/暂停/重置）
+  - 💡 一句话复盘（心情选择 + 文本输入 + 发送到 Supabase，source='desktop'）
+  - 🔐 独立登录（邮箱注册/登录，8秒超时保护）
+  - 状态切换：待机（128×128 仅角色）↔ 展开（320×460 完整面板）
+- ✅ Electron 主进程代码编写完成（透明窗口 + 托盘 + IPC）
+- ✅ 启动方式：Edge App 模式（`npm run companion`）
+  - 无浏览器边框、独立桌面窗口
+  - 启动脚本：`companion-start.bat`
+
+**Electron 模块问题（已记录）：**
+- Electron 31/42 的 `electron` 内置模块仅限默认 ASAR 访问，用户代码无法 import
+- 降级到 31 + 自定义 ASAR 均不可行
+- 后续若需透明悬浮窗，可考虑：electron-forge 脚手架 / Tauri / Win32 WebView2
+
+**文件清单：**
+| 文件 | 说明 |
+|------|------|
+| `src/app/companion/page.tsx` | 悬浮伙伴 UI（角色 + 面板 + 动画） |
+| `src/app/companion/layout.tsx` | 独立布局（透明背景） |
+| `src/app/companion/companion-shell.tsx` | AuthProvider 包裹 |
+| `src/app/companion/companion-auth-gate.tsx` | 登录/注册门禁 |
+| `desktop/main.js` | Electron 主进程（备选） |
+| `desktop/preload.js` | Electron IPC 桥接（备选） |
+| `companion-start.bat` | Windows 一键启动脚本 |
+
+**Git 备份：** 待提交
+
+**下一步：** 继续开发剩余模块（记账/目标/统计/提醒），或等待 Electron 透明窗口方案
