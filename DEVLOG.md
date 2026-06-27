@@ -619,3 +619,224 @@
 |------|------|
 | `desktop/companion.py` | `_pid_is_companion` 进程身份校验 + 入口单实例逻辑加固 |
 | `.gitignore` | 忽略 `desktop/companion.pid`、`desktop/__pycache__/` |
+
+---
+
+### 2026-06-27 #27 — 桌面悬浮伙伴打包成单文件 exe（免装 Python）
+
+**诉求：** 「没办法让网页端用户都使用上悬浮伙伴吗」——确认方向为**打包桌面程序**：把 Python 悬浮窗打包成可下载、双击即用的单文件 `小橘.exe`，访问者不需要装 Python。
+
+**架构前提（已与用户说明）：** 云端部署（Vercel）的网页 API 跑在云服务器，浏览器沙箱内无法在访问者本地桌面 spawn 进程，所以「网页一键启动悬浮窗」只在本机跑 Next.js 时才成立。要让任意网页用户用上悬浮伙伴，正解是分发一个本地可执行程序。
+
+**冻结安全改造（`desktop/companion.py`）：**
+- `FROZEN = getattr(sys, "frozen", False)`；新增 `resource_path()` 经 `sys._MEIPASS` 定位内置只读资源。
+- `BASE_DIR` 冻结时取 `sys.executable` 所在目录（打包后 `__file__` 指向解压临时目录，不可靠）。
+- 可写数据目录：冻结时落 `%APPDATA%\小橘\`（exe 所在目录可能只读），脚本态仍写 `desktop/`，本地网页配置热同步不受影响；`POSITION_FILE/CONFIG_FILE/PID_FILE` 随之切换。
+- `DEFAULT_CONFIG` 增加 `web_url`，右键「打开网页面板 / 伙伴设置」读取它（分发版可在 `companion_config.json` 覆盖为云端地址）。
+- 单实例进程身份校验适配打包：`_expected_image_token()` —— 冻结态期望进程映像名是 `小橘.exe`，脚本态仍是 `python`（否则打包后映像名不含 "python" 会导致单实例锁失效）。
+
+**打包配置：**
+| 文件 | 说明 |
+|------|------|
+| `desktop/companion.spec` | PyInstaller 单文件配置（`--onefile` 等价、`console=False` 无黑框、`hiddenimports` 显式带上 PIL.Image/ImageTk/ImageSequence、用 `SPECPATH` 定位脚本） |
+| `package.json` | 新增 `companion:build` script（`python -m PyInstaller --noconfirm --distpath desktop/dist --workpath desktop/build desktop/companion.spec`） |
+| `.gitignore` | 忽略 `desktop/dist/`、`desktop/build/` 打包产物 |
+
+**构建 & 实测（PyInstaller 6.21.0 / Python 3.12.10）：**
+- 产物 `desktop/dist/小橘.exe`，28.4 MB，单文件。
+- 双击启动 → 顶层窗口 `小橘 · 桌面伙伴` **可见**，尺寸 170×190，落在屏幕右下（实测 rect `(1240,650)-(1410,840)`）✅
+- PID 文件正确写到 `%APPDATA%\小橘\companion.pid` ✅
+- 单实例锁对打包版生效：再启第二个实例时，子进程识别到映像名为 `小橘.exe` 的同类已在运行 → 直接退出，不新增常驻进程 ✅
+- 默认 emoji 模式（🐱），不依赖任何外部图片资源，开箱即用。
+
+**注意：** 右键菜单「打开网页面板 / 伙伴设置 / 退出」与脚本版同源代码，本轮未做 GUI 点击级验证；图片 / GIF 模式的内置资源回退（`resource_path`）留待 phase-2 完善。
+
+**后续 phase-2（未开工）：** 网页加「下载桌面悬浮伙伴」按钮 + 分发版 `web_url` 指向云端 + 云端按用户同步配置，形成「云端配置 ↔ 本地浮窗」闭环。
+
+**修改/新增文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | 冻结安全（FROZEN/resource_path/%APPDATA% 数据目录/web_url）+ 单实例映像名适配 |
+| `desktop/companion.spec` | 新增 PyInstaller 打包配置 |
+| `package.json` | 新增 `companion:build` script |
+| `.gitignore` | 忽略 `desktop/dist/`、`desktop/build/` |
+
+---
+
+### 2026-06-27 #28 — 桌面伙伴升级：计时 + 复盘 + 自动记日历 + 换形象 + 默认改名「小H」
+
+**诉求：**
+- 「我想要这个悬浮伙伴能给我计时，显示时间等，我可以简短复盘给他，它可以记录到日历里」
+- 计时方式「两种都要」（正计时 + 倒计时可切换）；「登录后自动记日历」
+- 「这个不要叫小橘，全部默认改为小H，用户自定义后改为叫用户自定义的名字」
+
+**默认改名「小橘」→「小H」（保留用户自定义优先）：**
+- 浮窗：`DEFAULT_CONFIG["nickname"]="小H"`、窗口标题/退出菜单/数据目录 `%APPDATA%\小H\`、打包产物 `小H.exe`；`_nickname()` 始终优先取用户在 `companion_config.json` 里的自定义昵称。
+- 网页/文档：`partner-settings-form.tsx`、`api/partner/config/route.ts`、`companion/page.tsx`、`schema.sql`（`partner_config.nickname DEFAULT '小H'`）、`companion-start.bat`、`DESIGN.md` 默认值同步改为「小H」。历史 DEVLOG 中的「小橘」字样保留不改（仅记录历史）。
+
+**计时 / 复盘 / 记日历（`desktop/companion.py`，纯标准库 urllib 直连 Supabase REST）：**
+- **点击弹出计时面板**：单击浮窗弹出 270×380 卡片（可拖动、✕ 关闭）。区分点击与拖拽——移动 >5px 判为拖窗并存位置，否则视为点击开面板。
+- **两种计时**：面板内切换「倒计时 / 正计时」。倒计时预设 15/25/45/60 分钟；正计时从 0 起。开始 / 暂停 / 重置；面板顶部大号显示用时（mm:ss）+「现在 HH:MM:SS」实时时钟。
+- **后台续表**：计时基于时间戳（`timer_started_at` + `timer_base_elapsed`），关掉面板继续走表；浮窗名字栏实时显示「⏱ mm:ss」。倒计时到点自动结算。
+- **结束 → 复盘 → 写日历**：点「结束」弹复盘框「🎉 已专注 X 分钟 ·「标题」已记入今天的日历」+ 一句话收获文本框。投入插入 `time_entries`（`title/duration_minutes/pomodoro_count=分钟//25/tags`），复盘文字 PATCH 回该条 `note`。created_at 由服务端 now() 落到当天，网页日历即时可见。不足 30 秒不记。
+- **登录**：未登录时点结束先弹邮箱 + 密码登录窗（`/auth/v1/token` 密码授权，存 access/refresh token + user_id 到 `%APPDATA%\小H\companion_auth.json`，临期 <60s 自动 refresh），登录成功后接着记录。右键菜单显示登录邮箱 / 退出登录。
+- 网络请求走 daemon 线程，`root.after(0,...)` 回主线程刷新 UI，不卡窗口。
+
+**右键「换形象…」/「改名…」：**
+- 换形象：`filedialog` 选本地 png/jpg/jpeg/gif → 复制到 `%APPDATA%\小H\avatar.ext` → 即时切换为图片 / GIF 模式（gif 逐帧播放）并存配置。让打包版 exe 也能自定义形象（绕开「网页上传图片与 exe 数据目录不通」的问题）。
+- 改名：`simpledialog` 改昵称 → 更新窗口标题 + 名字栏，覆盖默认「小H」。
+
+**重新打包 & 实测（PyInstaller 6.21.0 / Python 3.12.10）：**
+- 产物 `desktop/dist/小H.exe`，28.4 MB，单文件；旧 `小橘.exe` 已删除。
+- 实测：顶层窗口「小H · 桌面伙伴」可见；单实例锁对打包版生效（二次启动仍只 1 个可见窗口，`_expected_image_token()` 按 exe 映像名校验有效）；默认名为「小H」。
+
+**注意：** 登录 / 计时 / 复盘 / 换形象为 tkinter 桌面 GUI，无 DOM 无法自动化点击，依赖 `py_compile`（exit=0）+ 与网页 `focus-timer.tsx` 的写库契约一致（同写 `time_entries`，字段对齐）保证正确性，待用户运行 exe 实测交互。
+
+**修改 / 新增文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | 计时面板（正/倒计时 + 当前时间）+ 复盘记日历 + Supabase urllib 登录/刷新/写 time_entries/补 note + 换形象/改名 + 点击vs拖拽 + 默认名小H |
+| `desktop/companion.spec` | 产物名 `小H` |
+| `src/components/partner-settings-form.tsx` | 默认昵称/文案「小橘」→「小H」 |
+| `src/app/api/partner/config/route.ts` | `DEFAULTS.nickname` → 「小H」 |
+| `src/app/companion/page.tsx` | 默认昵称 → 「小H」 |
+| `supabase/schema.sql` | `partner_config.nickname DEFAULT '小H'` |
+| `companion-start.bat` | 启动/退出文案 → 「小H」 |
+| `DESIGN.md` | 面板示意 → 「小H」 |
+
+---
+
+### 2026-06-27 #29 — 点击改随机语句 + 网页一键下载悬浮窗 + 线上网址 breadog.top + 面板对齐
+
+**诉求：**
+- 「不要点一下或者移到这个悬浮窗上就是专注计时的窗口，点一下应该是随机语句」
+- 「要在网页端能让用户一键装好能启动悬浮窗」+「网站访问者能直接下载」
+- 「悬浮窗打开网页端指向的应该也是部署好的网页」→ 线上地址 `breadog.top`
+- 「那个面板的文字没对齐」
+
+**改动（`desktop/companion.py`）：**
+- **点击改随机语句**：左键单击浮窗不再打开计时面板，改为从 `CLICK_PHRASES`（15 句）随机蹦一句气泡（显示 2.5s）。计时面板移到**右键菜单「⏱ 开始专注」**打开。悬停本就无绑定，确认不会触发面板。闲置气泡里「点我开始专注吧」改为「右键我能开始专注哦」。
+- **计时面板对齐**：状态/账号两行原本一个用 `side=tk.BOTTOM` 钉底造成空隙、文字未左对齐；改为统一 `anchor="w"` + `fill=X` + 自动换行，顺序往下排，左边缘与输入框/按钮对齐。
+- **线上网址**：`DEFAULT_WEB_PANEL_URL` 由 `http://localhost:3000` 改为 `https://breadog.top`（`DEFAULT_CONFIG.web_url` 随之默认指向线上；本地可在 `companion_config.json` 覆盖回 localhost）。
+
+**网页一键下载（架构说明）：** 云端网站受浏览器安全限制**无法替访问者自动启动**本地 exe，所以是「一键下载 → 双击运行」。
+- 把打包好的 `小H.exe` 复制到 `public/download/xiaoh.exe`（随 Vercel 部署，CDN 直发，约 28MB）。
+- 「伙伴设置」页新增**下载卡片**：`⬇ 下载 (.exe)` 按钮，相对链接 `/download/xiaoh.exe` + `download="小H桌面伙伴.exe"`（任何域名通用，下载文件名友好）；卡片说明使用方式 + Windows SmartScreen「更多信息→仍要运行」+「登录后才同步日历」。
+- 原 Card 0 的本地「启动/关闭悬浮窗」按钮保留（仅本机跑 Next.js 时有效）。
+
+**其它 URL 同步：** `src/app/companion/page.tsx`、`desktop/main.js`（备选 Electron）里残留的 `life-panel-phi.vercel.app` → `breadog.top`。
+
+**重新打包 & 验证：** `py_compile` exit=0；重打包 `小H.exe`（28.4MB，PyInstaller 6.21.0）并同步到 `public/download/xiaoh.exe`；dev server（:3005）`/partner` 返回 200，`/download/xiaoh.exe` HEAD 200（`application/octet-stream`，28.4MB）。
+
+**待用户操作：** 提交并推送（含 `public/download/xiaoh.exe` 二进制）→ Vercel 重新部署后，`https://breadog.top` 上的下载按钮才对线上访问者生效。
+
+**修改 / 新增文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | 点击→随机语句（CLICK_PHRASES）、面板状态/账号左对齐、默认网址 breadog.top |
+| `src/components/partner-settings-form.tsx` | 新增「下载桌面悬浮伙伴」卡片 |
+| `public/download/xiaoh.exe` | 新增打包产物（供网页直接下载，28.4MB） |
+| `src/app/companion/page.tsx` | 打开网页 URL → breadog.top |
+| `desktop/main.js` | 备选 Electron 打开网页 URL → breadog.top |
+
+---
+
+### 2026-06-27 #30 — 浮窗去小字 + 计时面板整体左对齐
+
+**诉求：**
+- 「启动的时候只要显示名字就行了底下的小字不要」
+- 「还是没有把右键悬浮窗面板上字对齐」
+
+**改动（`desktop/companion.py`）：**
+- **去小字**：删除浮窗角色名下方的 `hint_label`（原「点我开始专注 · 右键菜单」）。现在浮窗自上而下只有：气泡 → 角色 → 名字，名字底下不再有第二行提示文字。
+- **面板整体左对齐**：上一版只修了状态/账号行，但大号计时数字 `00:00` 与下方时钟仍是**居中**，与「正在做什么 / 状态 / 账号」的**左对齐**不一致，看起来仍没对齐。本次把 `p_time`、`p_clock` 也加 `anchor="w"` + `fill=X`，全部文字共用一条左边缘。
+- **关闭按钮垂直居中**：header 的 `✕` 补 `pady=6`，与标题「⏱ 专注计时」同一基线。
+
+**重新打包 & 验证：** `py_compile` exit=0；重打包 `小H.exe`（29.8MB，PyInstaller，19:54）并同步到 `public/download/xiaoh.exe`。
+
+**待用户操作：** 提交并推送（含更新后的 `public/download/xiaoh.exe`）→ Vercel 重新部署后线上下载即为新版。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | 删除 hint_label；计时面板 time/clock 左对齐；关闭按钮 pady 垂直居中 |
+| `public/download/xiaoh.exe` | 更新打包产物（29.8MB） |
+
+---
+
+### 2026-06-27 #31 — 右键菜单对齐 + 悬浮窗 AI 聊天（带记忆库）
+
+**诉求：**
+- 「换形象 / 打开网页面板 文字没对齐，和前面的表情有留空」
+- 「让这个悬浮窗能连接大模型和我聊天，且能记住我所说的，即有记忆库」
+
+**改动（`desktop/companion.py`）：**
+
+1. **右键菜单对齐** —— 之前菜单项前缀的 emoji（🖼️ ⚙️ 🖥️ 等带变体选择符）在 Windows 原生菜单里宽度不一致，且后面空格数 1/2 不统一，导致文字参差、emoji 后留空。改为**去掉全部 emoji、纯文字**，所有菜单项共用一条左边缘，彻底对齐。
+
+2. **AI 聊天 + 记忆库** —— 右键菜单新增「和我聊天」，打开一个聊天窗口：
+   - **复用网页 AI 配置**：登录后从 Supabase `ai_settings` 表（RLS 保护）读取 provider / api_key / api_base / model，支持 DeepSeek / 通义千问 / 智谱 / 豆包 / OpenAI（OpenAI 兼容 `/chat/completions`）和 Anthropic（`/v1/messages`）。未登录或未配置会给出引导提示。
+   - **网络请求在后台线程**（复用 `run_async`），UI 不卡；发送时显示「正在输入…」。
+   - **记忆库（持久化）**：对话存本地 `%APPDATA%\小H\companion_chat.json`，重启后仍记得聊过的内容；每次请求带「长期记忆摘要 + 最近 24 条」。对话变长（>超过阈值）时后台调用模型把更早的内容**压缩进长期记忆要点**（`summarized_upto` 游标增量摘要，不重复、不丢历史）。系统提示里注入这段记忆，让它「记住你说过的事」。
+   - 窗口顶部「清空记忆」可一键清空记录与记忆（带应用内确认框）。
+   - 人设：以伙伴昵称（小H）温暖、口语化、简短地陪聊。
+
+**新增本地文件（运行时生成）：** `%APPDATA%\小H\companion_chat.json`（聊天记录 + 记忆，不入库）。
+
+**验证：** `py_compile` exit=0；dev 脚本启动 5s 无崩溃；重打包 `小H.exe`（29.8MB）并同步到 `public/download/xiaoh.exe`。
+
+**前置条件：** 需先**登录**（右键登录），并在网页「设置 → AI 智能设置」里填好模型和 API Key，聊天才能调用模型。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | 右键菜单去 emoji 对齐；新增聊天窗口 + 记忆库 + 多厂商 LLM 调用 |
+| `public/download/xiaoh.exe` | 更新打包产物（含聊天功能，29.8MB） |
+
+---
+
+### 2026-06-27 #32 — 修复聊天/登录/复盘窗口「打不了字」（键盘焦点）
+
+**诉求：** 「现在无法打字聊天」——「和我聊天」窗口能打开，但点输入框也打不出字、键盘没反应。
+
+**根因：** 主悬浮窗是 `overrideredirect(True)`（无边框、不在任务栏、Windows 不视其为"可激活窗口"）。它派生的子 Toplevel 在 Windows 上拿不到**操作系统级键盘焦点**——点击输入框只给了 Tk 内部焦点，但窗口本身没被系统"激活"，键盘事件不会送进来。`focus_set()` 仅请求 Tk 内部焦点，压不住这个问题。
+
+**改动（`desktop/companion.py`）：**
+- 新增 `_grab_keyboard(win, widget)` 辅助方法：`win.lift()` + `win.focus_force()` + `widget.focus_force()`，强制激活窗口并夺取键盘焦点；**立即 + `after(60)` + `after(200)` 各调一次**，避开"窗口尚未映射时 focus 被忽略"的时序竞争。
+- 聊天窗口（`open_chat`）、登录窗口（`open_login`）、专注复盘窗口（`show_finish_frame`）的 `*.focus_set()` 全部改用 `_grab_keyboard(...)`。
+
+**验证：** `py_compile` exit=0；重打包 `小H.exe`（29.8MB，21:04）并同步到 `public/download/xiaoh.exe`；新 exe 启动无崩溃（pid 存活）。键盘输入需用户在本机交互确认。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | 新增 `_grab_keyboard`；聊天/登录/复盘窗口强制夺取键盘焦点 |
+| `public/download/xiaoh.exe` | 更新打包产物（含焦点修复，29.8MB） |
+
+---
+
+### 2026-06-27 #33 — 悬浮窗记忆库升级为 mem0 式「事实抽取 + 相关检索」
+
+**诉求：** 「`https://github.com/mem0ai/mem0` 用这个仓库打造记忆库」。经评估三条路线（A 真·mem0 云后端代理 / B 本地 mem0 式记忆 / C 暂不动），用户选 **B 本地 mem0 式记忆（推荐）**——理由是「让用户能方便使用」：纯本地、零新依赖、不需要任何 API Key、不上云、exe 不变重，开箱即用。
+
+**思路对齐 mem0 的核心范式（add + search），但全部用 Python 标准库实现，不嵌入 LLM/向量库：**
+- **add（抽取离散事实）**：每轮对话后，后台用已配置的大模型把聊天里关于「用户本人」值得长期记住的信息，抽成一条条独立、自包含的中文事实（如「用户在备考研究生」），与已有记忆比对只产出新增/更新，去重合并进本地 fact store。取代旧的「把历史压缩成一坨摘要」。
+- **search（按相关性检索注入）**：每次发消息时，用当前这句话做 query，对所有已记事实打相关性分，取 top-K 注入系统提示词，让模型"想起"最相关的几条，而不是把全部记忆一股脑塞进去。
+- **检索打分无需向量库/embedding**：`_mem_tokens` 把字符串拆成「ASCII 词 + 中文单字 + 中文二元组」token 集合，query 与事实的 token 交集大小即相关分；分数为 0 时用最近的事实回填，保证基础上下文不丢。
+
+**改动（`desktop/companion.py`）：**
+- 新增 `FACT_EXTRACTION_INSTRUCTION`：指示模型严格只输出 JSON 数组形式的离散事实，无可记则输出 `[]`。
+- `load_chat/save_chat` 改为存 `{messages, facts, summarized_upto}`；`facts` 为 `[{id,text,ts}]`。旧版单串 `memory` 摘要会经 `_facts_from_legacy_memory` 自动迁移成事实列表，老用户记忆不丢。
+- 新增纯函数：`_mem_tokens` / `retrieve_facts`（search）/ `merge_facts`（add 去重合并，上限 200 条保留最近）/ `_norm_fact` / `_first_json_array` / `_parse_fact_list`（容错解析模型输出，兼容 ```json 围栏与杂散文本）。
+- `_chat_maybe_extract` 取代 `_chat_maybe_summarize`：累计 ≥4 条新消息后后台抽取，解析失败不推进游标、下次重试。
+- `_chat_system_prompt(query)` 改为按相关性注入检索到的事实；聊天窗口 header 新增「记得的事」入口（`_chat_show_memory` 只读查看已记事实，倒序最多 60 条），保留「清空记忆」。
+
+**验证：** `py_compile` exit=0；编写临时单测覆盖 `_parse_fact_list` / `merge_facts` / `retrieve_facts` / 旧格式迁移共 13 项断言，全部 PASS（测试后已删除）；重打包 `小H.exe`（29,809,542 字节，21:18）并同步到 `public/download/xiaoh.exe`；新 exe 启动无崩溃。
+
+**使用前提（沿用）：** 聊天/记忆需先登录，并在网页「设置 → AI 智能设置」配好模型与 API Key（事实抽取复用同一模型）。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | 记忆库改为 mem0 式 add+search；事实抽取/检索/去重/迁移/「记得的事」查看器 |
+| `public/download/xiaoh.exe` | 更新打包产物（含 mem0 式记忆，29.8MB） |
