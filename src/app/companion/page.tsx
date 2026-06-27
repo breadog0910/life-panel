@@ -140,12 +140,23 @@ export default function CompanionPage() {
   const handleSubmit = async () => {
     if (!content.trim() || !user) return;
     setSaving(true);
-    await supabase.from("reflections").insert({
-      user_id: user.id,
-      content: content.trim(),
-      mood: mood || "😊",
-      source: "desktop",
-    });
+    // 同时写入 entries 表（笔记灵感库）和 reflections 表（兼容旧版）
+    await Promise.all([
+      supabase.from("entries").insert({
+        user_id: user.id,
+        type: "note",
+        content: content.trim(),
+        mood: mood || "😊",
+        source: "desktop",
+        category: "心情",
+      }),
+      supabase.from("reflections").insert({
+        user_id: user.id,
+        content: content.trim(),
+        mood: mood || "😊",
+        source: "desktop",
+      }),
+    ]);
     setSaving(false);
     setSubmitted(true);
     setContent("");

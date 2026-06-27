@@ -1,4 +1,50 @@
-// 日记
+// 笔记灵感库（合并 diary + reflection）
+export type EntryType = "text" | "image" | "link" | "video" | "note";
+export type EntrySource = "desktop" | "web" | "mobile";
+
+export interface Entry {
+  id: string;
+  user_id: string;
+  type: EntryType;
+  title?: string;
+  content?: string;
+  media_urls?: string[];
+  link_url?: string;
+  link_title?: string;
+  link_description?: string;
+  link_favicon?: string;
+  mood?: "😊" | "😐" | "😢" | "😡";
+  weather?: string;
+  tags?: string[];
+  category?: string;
+  source: EntrySource;
+  ai_summary?: string;
+  ai_tags?: string[];
+  ai_category?: string;
+  entry_date: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+}
+
+// AI 设置
+export type AIProvider = "deepseek" | "qwen" | "glm" | "doubao" | "openai" | "anthropic";
+
+export interface AISettings {
+  id: string;
+  user_id: string;
+  provider: AIProvider;
+  api_key?: string;
+  api_base?: string;
+  model?: string;
+  auto_tag_enabled: boolean;
+  auto_category_enabled: boolean;
+  auto_summary_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// 日记（旧表，保留兼容）
 export interface Diary {
   id: string;
   user_id: string;
@@ -21,7 +67,48 @@ export interface TimeEntry {
   duration_minutes?: number;
   pomodoro_count?: number;
   tags?: string[];
+  node_id?: string;
+  note?: string;
   created_at: string;
+}
+
+// 计划中心 — 技能树节点
+export type PlanNodeType = "wish" | "goal" | "task";
+export type PlanNodeStatus = "active" | "completed" | "abandoned";
+
+export interface PlanCategory {
+  id: string;
+  user_id: string;
+  name: string;
+  color: string;
+  created_at: string;
+}
+
+export interface PlanEdge {
+  id: string;
+  user_id: string;
+  source_id: string;
+  target_id: string;
+  created_at: string;
+}
+
+export interface PlanNode {
+  id: string;
+  user_id: string;
+  parent_id?: string | null;
+  title: string;
+  description?: string;
+  node_type: PlanNodeType;
+  progress: number;
+  status: PlanNodeStatus;
+  deadline?: string;
+  pos_x: number;
+  pos_y: number;
+  color?: string;
+  category_id?: string | null;
+  collapsed?: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // 复盘

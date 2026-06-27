@@ -6,13 +6,11 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   BookOpen,
-  Clock,
   Wallet,
-  Target,
+  Map,
   BarChart3,
-  Lightbulb,
-  Bell,
   Settings,
+  Sparkles,
   ChevronLeft,
   LogOut,
 } from "lucide-react";
@@ -21,14 +19,12 @@ import { useAuth } from "@/lib/auth-context";
 
 const navItems = [
   { href: "/", label: "今日概览", icon: LayoutDashboard },
-  { href: "/diary", label: "日记", icon: BookOpen },
-  { href: "/time", label: "时间安排", icon: Clock },
+  { href: "/diary", label: "笔记灵感库", icon: BookOpen },
+  { href: "/plan", label: "计划中心", icon: Map },
   { href: "/finance", label: "记账", icon: Wallet },
-  { href: "/goals", label: "目标规划", icon: Target },
-  { href: "/reflections", label: "复盘汇总", icon: Lightbulb },
   { href: "/stats", label: "数据统计", icon: BarChart3 },
-  { href: "/reminders", label: "提醒管理", icon: Bell },
   { href: "/partner", label: "伙伴设置", icon: Settings },
+  { href: "/settings/ai", label: "AI 智能设置", icon: Sparkles },
 ];
 
 function UserFooter() {

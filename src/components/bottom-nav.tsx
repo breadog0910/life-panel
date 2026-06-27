@@ -6,23 +6,19 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   BookOpen,
-  Clock,
   Wallet,
-  Target,
-  Lightbulb,
-  Bell,
+  Map,
+  BarChart3,
   Settings,
 } from "lucide-react";
 
 const mobileNavItems = [
   { href: "/", label: "概览", icon: LayoutDashboard },
-  { href: "/diary", label: "日记", icon: BookOpen },
-  { href: "/time", label: "时间", icon: Clock },
+  { href: "/diary", label: "笔记", icon: BookOpen },
+  { href: "/plan", label: "计划", icon: Map },
   { href: "/finance", label: "记账", icon: Wallet },
-  { href: "/goals", label: "规划", icon: Target },
-  { href: "/reflections", label: "复盘", icon: Lightbulb },
-  { href: "/stats", label: "统计", icon: Bell },
-  { href: "/reminders", label: "提醒", icon: Settings },
+  { href: "/stats", label: "统计", icon: BarChart3 },
+  { href: "/partner", label: "伙伴", icon: Settings },
 ];
 
 export default function BottomNav() {

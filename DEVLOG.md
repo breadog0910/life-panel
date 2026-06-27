@@ -317,3 +317,278 @@
 - [x] #8 Companion 状态重置 — 已修复（handleCollapse 时重置表单状态）
 - [x] #9 Goals deadline 验证 — 已修复（formatDeadline 添加无效日期检查）
 - [x] #10 Companion tick 依赖 — **经验证非bug**：tick 函数不使用 user，依赖数组为空正确
+
+---
+
+### 2026-06-26 #17 — 笔记灵感库大改版
+
+**模块定位：** 从「日记」升级为「笔记灵感库」—— 既是日记，也是灵感收集，什么都能往里丢。
+
+**核心变化：**
+- 合并 diary + reflections → entries 一张表
+- 支持多种内容类型：文字 / 图片 / 链接（第一版）
+- 双视图切换：时间轴视图 + 瀑布流视图
+- AI 能力：自动打标签 + 自动分类 + 摘要生成
+- 多模型可切换：DeepSeek / 通义千问 / 智谱 / 豆包
+
+**开发计划：**
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| Phase 1 | 数据库：新建 entries 表 + 迁移脚本 + 类型定义 | ✅ 完成 |
+| Phase 2 | 页面：双视图列表 + 新建/编辑 + 筛选搜索 | ✅ 完成 |
+| Phase 3 | 图片上传：Supabase Storage + 上传组件 | ✅ 完成 |
+| Phase 4 | AI 能力：多模型服务层 + 自动标签分类 | ✅ 完成 |
+| Phase 5 | 整合：导航更新 + 桌面伙伴同步 + QuickReflection | ✅ 完成 |
+
+**新增文件：**
+- `src/app/(main)/settings/ai/page.tsx` — AI 设置页面
+- `src/app/api/ai/process/route.ts` — AI 处理 API
+- `src/lib/ai-service.ts` — AI 服务层（多模型）
+- `src/lib/storage.ts` — Supabase Storage 工具
+- `src/components/image-upload.tsx` — 图片上传组件
+
+**修改文件：**
+- `src/app/(main)/diary/page.tsx` — 重写为笔记灵感库
+- `src/components/sidebar.tsx` — 导航更新
+- `src/components/bottom-nav.tsx` — 底部导航更新
+- `src/components/quick-reflection.tsx` — 同步写入 entries
+- `src/app/companion/page.tsx` — 桌面伙伴同步写入 entries
+- `supabase/schema.sql` — 新增 entries / ai_settings 表
+
+**使用前需要做：**
+1. 在 Supabase 运行新的 schema.sql（创建 entries 和 ai_settings 表）
+2. 在 Supabase Storage 创建 `entry_media` bucket（公开可读）
+3. 设置 SUPABASE_SERVICE_ROLE_KEY 环境变量（用于 AI API 用户验证）
+4. 在设置 → AI 设置中配置你的 API Key
+
+---
+
+### 2026-06-27 #18 — 计划中心（时间 + 规划 + 提醒 三合一）
+
+**模块定位：** 把原来分散的「时间安排」「目标规划」「提醒管理」三个板块合并为一个 **🗺️ 计划中心**。核心是一棵可视化「人生技能树」——从最大的人生愿望（根节点）逐层向下拆解到目标、具体任务；每个节点可进入计时，计时结束后把投入时长挂回节点上，直观看到自己在每条分支上的努力。提醒作为备忘性质的一块以抽屉形式整合进来。
+
+**愿景拆解（与用户确认）：**
+- 全景规划：愿望 🌟 → 目标 🎯 → 任务 ✅ 三级技能树
+- 自由加节点、拖拽布局、连线建立父子关系
+- 选中节点 → 计时 → 计时结束写入 time_entries 并关联该节点 → 节点显示累计投入分钟
+- 提醒 / 备忘整合为侧边抽屉
+
+**技术选型：**
+- 画布：`@xyflow/react`（React Flow v12）—— 自定义节点 + 连线 + 小地图 + 拖拽持久化
+- 数据：新建 `plan_nodes` 表（树形自引用 parent_id），`time_entries` 增加 `node_id` 外键
+
+**开发阶段：**
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| P1 | 数据层：plan_nodes 表 + 迁移脚本 + 类型定义（PlanNode / node_id） | ✅ |
+| P2 | 树视图：React Flow 画布渲染节点（自定义 PlanNodeCard） | ✅ |
+| P3 | 拖拽：节点坐标持久化 + 连线设置父子关系 | ✅ |
+| P4 | 计时联动：节点 → 计时 → 写 time_entries（带 node_id）→ 累计投入回显 | ✅ |
+| P5 | 提醒 / 备忘整合为侧边抽屉（ReminderDrawer） | ✅ |
+| P6 | 收尾：导航三合一 + 删除旧页面 + DEVLOG | ✅ |
+
+**新增文件：**
+| 文件 | 说明 |
+|------|------|
+| `supabase/migrate-plan-center.sql` | 计划中心迁移脚本（建表 / RLS / 触发器 / goals→plan_nodes 迁移） |
+| `src/app/(main)/plan/page.tsx` | 计划中心主页面（React Flow 画布 + 节点详情面板 + 计时器） |
+| `src/components/plan-node-card.tsx` | React Flow 自定义节点组件（类型徽章 / 进度条 / 累计投入 / deadline） |
+| `src/components/reminder-drawer.tsx` | 提醒 / 备忘侧边抽屉（reminders CRUD） |
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/types/database.ts` | 新增 PlanNode / PlanNodeType / PlanNodeStatus；TimeEntry 加 node_id |
+| `src/components/sidebar.tsx` | 删除 时间 / 目标 / 提醒，新增「计划中心」（Map 图标） |
+| `src/components/bottom-nav.tsx` | 移动端导航三合一，新增「计划」 |
+| `src/components/schedule-card.tsx` | 首页日程卡「添加」跳转 `/time` → `/plan` |
+
+**删除文件：**
+- `src/app/(main)/time/page.tsx`
+- `src/app/(main)/goals/page.tsx`
+- `src/app/(main)/reminders/page.tsx`
+
+**使用前需要做：**
+1. 在 Supabase SQL Editor 运行 `supabase/migrate-plan-center.sql`（建 plan_nodes 表、给 time_entries 加 node_id、把旧 goals 迁移成顶层目标节点）
+
+**下一步：** 浏览器验证计划中心交互（加节点 / 拖拽 / 连线 / 计时 / 提醒抽屉）
+
+---
+
+### 2026-06-27 #19 — 计划中心 v2（多 Tab + 折叠子树 + 板块分类 + 专注计时联动 + 日历）
+
+**模块定位：** 在「人生技能树」基础上，按用户反馈升级为多 Tab 的完整闭环：技能树负责规划，专注计时负责执行，日历负责回顾。三者通过 `time_entries.node_id` 串联——计时产生的投入既回显到树节点，也沉淀进日历贡献视图。
+
+**用户反馈与对应改动：**
+- ✅ 子树一键收拢/展开 —— 节点底部箭头按钮，折叠时隐藏全部后代并显示隐藏数量
+- ✅ 更多自定义颜色 —— 10 色调色板，节点可单独上色（覆盖板块色）
+- ✅ 更多板块 —— 新建 `plan_categories`（名称 + 颜色），节点可归类，顶部 chips 一键筛选
+- ✅ 修复「节点计时没用」—— 移除树内联计时，独立成「专注计时」Tab；insert 检查 error 并提示，降低记录门槛到 30 秒
+- ✅ 像日程一样的计时画面，和树分开 —— 专注计时 Tab：倒计时（15/25/45/60/自定义）+ 正计时，可记录「正在做什么」
+- ✅ 计时完入树 —— 完成后可「挂到已有节点下」或「新建独立节点」（自动建 100% 完成的 task 并回写 node_id）
+- ✅ 日历看一天的贡献 —— 月历热力图（颜色深浅=专注时长）+ 当日详情（为哪些分支做了贡献 + 专注记录列表）
+- ✅ 树上保留「去专注计时」快捷入口（跳到计时 Tab 并预选该节点）
+
+**架构：** `/plan` 页面改为 Tab 容器（技能树 / 专注计时 / 日历），切 Tab 时组件 remount 自动重载数据；提醒/备忘仍为侧边抽屉。
+
+**新增文件：**
+| 文件 | 说明 |
+|------|------|
+| `supabase/migrate-plan-center-v2.sql` | v2 迁移：plan_categories 表 + plan_nodes 加 category_id / collapsed |
+| `src/components/plan/skill-tree.tsx` | 技能树画布（从旧 plan/page.tsx 迁移并增强：折叠 / 颜色 / 板块 / 去计时） |
+| `src/components/plan/focus-timer.tsx` | 专注计时 Tab（倒计时 + 正计时 + 关联节点 + 完成入树 + 今日记录） |
+| `src/components/plan/plan-calendar.tsx` | 日历 Tab（月历热力图 + 当日贡献明细） |
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/app/(main)/plan/page.tsx` | 重写为多 Tab 容器，串联三个组件 + 提醒抽屉 |
+| `src/components/plan-node-card.tsx` | 支持自定义/板块色、板块徽章、折叠按钮 |
+| `src/types/database.ts` | 新增 PlanCategory；PlanNode 加 category_id / collapsed |
+| `src/components/quick-reflection.tsx` | 修复 `.catch`（thenable 改 `.then(ok, err)`） |
+
+**使用前需要做：**
+1. 先确认已运行过 `supabase/migrate-plan-center.sql`（v1）
+2. 在 Supabase SQL Editor 运行 `supabase/migrate-plan-center-v2.sql`（建 plan_categories 表、给 plan_nodes 加 category_id / collapsed 列）
+
+**验证状态：** TypeScript 类型检查通过；dev server（:3005）`/plan` 编译成功返回 200。交互式浏览器联调因当前环境 WebView 未就绪未执行，待用户登录 + 运行 v2 迁移后自测。
+
+**待用户自测主流程：** 加愿望 → 加子目标 → 拖拽连线 → 设板块/颜色 → 折叠子树 → 去计时（倒计时/正计时）→ 完成入树 → 日历看当日贡献。
+
+---
+
+### 2026-06-27 #20 — 修复：专注计时切换页面会停止
+
+**问题：** 专注计时用 React 的 `setInterval` 每秒累加 `seconds` 状态。切 tab（技能树/日历）或离开 `/plan` 时 `FocusTimer` 组件卸载，状态丢失，计时清零。
+
+**修复：** 改为**基于时间戳 + localStorage** 的计时：
+- 只持久化「开始时刻 `startedAt` + 此前累计 `baseElapsed` + running」，显示时间由 `now - startedAt` 实时算出
+- 切 tab / 切页面 / 刷新浏览器后，挂载时从 localStorage（key `lp-focus-timer`）恢复，墙钟时间继续，不清零
+- 新增「暂停 / 继续」：暂停冻结累计秒数，继续从断点接着走
+- 倒计时即使在别的页面超时，回来也会自动结算（时长封顶为设定值）
+- tick 仅触发重渲染，不写库不写 localStorage（避免高频写入）
+
+**修改文件：** `src/components/plan/focus-timer.tsx`
+
+---
+
+### 2026-06-27 #21 — 今日专注：事后补/改/清归属节点
+
+**诉求：** 计时结束当下若忘了把这次专注挂到技能树节点，事后无法补救会后悔。
+
+**改动：** 「今日专注」记录列表里，每条记录都能事后管理归属——
+- 每条记录显示归属状态：已挂节点显示 `🌳 节点名`，未挂显示橙色「未归属」提示
+- 行内 🌳 按钮展开归属编辑器，可：
+  - **改/设/清**：下拉选择关联到任一技能树节点，或选「不关联」直接清除归属（即时写 `time_entries.node_id`）
+  - **新建承载节点**：填标题 + 选父节点（或作为独立节点），一键创建 100% 完成的 task 节点并回写关联
+- 编辑即时落库并刷新，无需重新计时
+
+**修改文件：** `src/components/plan/focus-timer.tsx`（新增 `editingSessionId / createMode / newNodeTitle / newNodeParent` 状态与 `openSessionEditor / reassignSession / createNodeForSession` 处理函数 + 列表行内编辑器 UI）
+
+**验证状态：** TypeScript 类型检查通过；dev server（:3005）热重载编译成功。待用户刷新浏览器自测。
+
+---
+
+### 2026-06-27 #22 — 专注复盘：每次专注后记收获，可选收进笔记库
+
+**诉求：** 每次专注结束想做一个轻量化复盘（学到了什么 / 感悟），并能选择把它归到「笔记灵感库」里。
+
+**改动：**
+- **完成面板**新增「✍️ 这次的收获」：一个 textarea 记录复盘 + 「顺手收进笔记库」勾选（可填分类，默认「专注复盘」）+「保存收获」按钮。复盘文字写到该条专注记录上（`time_entries.note`），勾选时同步在 `entries`（笔记库）建一条 note（tag 含「专注」+ 标题）。
+- **今日专注**记录支持事后补 / 改复盘：每条记录若有复盘，列表里以「✍️ …」预览一行；展开行内编辑器后多出「这次的收获」区，可补写 / 修改 + 同样可勾选存入笔记库。
+- **优雅降级**：`time_entries` 列表查询改为 `select("*")`，即使没运行迁移（缺 `note` 列）也不会崩；写 note 失败时给软提示（且若已勾选存笔记，笔记照常入库）。
+
+**数据：** 复盘绑定专注记录用新增列 `time_entries.note`；存笔记库复用既有 `entries` 表（type=note）。
+
+**新增文件：** `supabase/migrate-focus-reflection.sql`（`ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS note TEXT`）
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/types/database.ts` | TimeEntry 加 `note?: string` |
+| `src/components/plan/focus-timer.tsx` | 完成面板复盘区 + 今日记录行内复盘编辑 + `pushToNotes / saveReflection / saveSessionNote` |
+
+**使用前需要做：** 在 Supabase SQL Editor 运行 `supabase/migrate-focus-reflection.sql`（加 `note` 列；不运行也不影响其它功能，只是复盘无法附到专注记录、但仍可存入笔记库）。
+
+**验证状态：** TypeScript 类型检查通过；dev server（:3005）热重载编译成功。待用户刷新浏览器自测。
+
+---
+
+### 2026-06-27 #23 — 复盘可在日历回看修改 + 技能树节点多连线
+
+**诉求：** ①专注复盘也要能修改，并在日历当日详情里展示这些收获方便回看；②技能树每个节点支持连多个其他节点（线要能删除，从一个底部可接多个头部、多个也可接到一个）。
+
+**改动：**
+- **日历当日详情**：每条专注记录展示其复盘收获（「✍️ …」），并可就地编辑/补写过去日期的收获（铅笔按钮 → textarea →「同时存入笔记库」勾选 → 保存/取消），写回 `time_entries.note`，勾选时同步在 `entries`（笔记库）建一条 note，再刷新。这样不只今日，任意历史日期的复盘都能回看、修改、并选择是否归档到笔记库（与「今日专注」记录的编辑能力一致）。
+- **技能树多连线**：从单一 `parent_id` 父子模型升级为独立的 `plan_edges` 多对多连线表。
+  - 一个节点底部 source 可连多个头部 target，多个节点也可连入同一节点；
+  - 连线可删除：点击连线弹确认即删（或选中按删除键，`onEdgesDelete`）；
+  - 折叠算法重写为 DAG：基于 edges 构建邻接表 + 入度，从无入边的「根」BFS 求可见集，折叠节点的下游中无其它可见路径到达的判为隐藏，并统计隐藏后代数用于「+N」提示；
+  - `addChild` 新建子节点时同步建一条连线。
+- **优雅降级**：`plan_edges` 查询失败（表未迁移）时回退用 `parent_id` 派生连线（id 形如 `pid-xxx`），此时连线删除回退为清子节点 `parent_id`、新建连线回退为写 `parent_id`，迁移前不影响使用。
+
+**数据：** 复盘复用 `time_entries.note`；多连线新增 `plan_edges` 表（`source_id`/`target_id` 多对多，`UNIQUE(source_id,target_id)`，`ON DELETE CASCADE`，RLS）。
+
+**新增文件：** `supabase/migrate-plan-edges.sql`（建 `plan_edges` 表 + 索引 + RLS + 从现有 `parent_id` 迁移连线）
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/types/database.ts` | 新增 `PlanEdge` 接口 |
+| `src/components/plan/skill-tree.tsx` | `plan_edges` 数据层 + `onConnect/onEdgeClick/onEdgesDelete` + DAG 折叠 + `addChild` 建边 + parent_id 回退 |
+| `src/components/plan/plan-calendar.tsx` | 当日详情展示+就地编辑复盘收获，`select("*")` 带 note |
+
+**使用前需要做：** 在 Supabase SQL Editor 运行 `supabase/migrate-plan-edges.sql`（多连线）与（若尚未运行）`supabase/migrate-focus-reflection.sql`（复盘 note 列）。未运行 `plan_edges` 迁移时技能树自动回退到单父模型，仍可正常使用。
+
+**验证状态：** TypeScript 类型检查通过；dev server（:3005）热重载编译成功。待用户刷新浏览器自测。
+
+---
+
+### 2026-06-27 #24 — 日历手动补记：干了什么 + 几点到几点 + 可选入笔记
+
+**诉求：** 在日历里能补记「我干了什么」，并可选填「几点到几点」（也可不填），同时可选择记到笔记库。
+
+**改动：**
+- **当日详情**新增「记一笔」按钮，展开后是补记表单：
+  - 「这天我干了什么」标题（必填）；
+  - 「几点到几点」开始/结束时间（`type=time`，均可不填）；
+  - 「同时记录到笔记库」勾选。
+- 保存逻辑（`addManualEntry`）：以选中日期 + 开始时间组成 `created_at`（未填时间默认当天 12:00，仅用于落在当天）；填了开始+结束且结束晚于开始则算出 `duration_minutes`，否则记 0 分；插入 `time_entries`；勾选则同步往 `entries`（笔记库，type=note，tag 含「专注」）插一条。
+- 文案：当日汇总改为「当天记录 N 条，专注 X 分钟」，列表标题「⏱ 当天记录」，空态「这一天还没有记录」，以兼容非计时类的手动补记。
+
+**数据：** 复用 `time_entries`（显式写 `created_at` 落到选中日）与 `entries`（笔记库）。无新增表/列。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/components/plan/plan-calendar.tsx` | 「记一笔」表单 + `addManualEntry/openAdd/cancelAdd` + 文案兼容 |
+
+**验证状态：** TypeScript 类型检查通过；dev server（:3005）热重载编译成功。待用户刷新浏览器自测。
+
+---
+
+### 2026-06-27 #25 — 删除按钮 + 技能树连线改为显式删除（修误删）
+
+**诉求：** ①日历记录要有删除按钮；②技能树「点一下线就删除了，没经过我的同意」。
+
+**根因：** 原技能树连线删除用 `onEdgeClick` + `window.confirm("删除这条连线？")`，但在 IDE 内置预览 webview 里 `window.confirm` 会被自动忽略（直接当作确认），导致单击连线即删，未经二次确认。
+
+**改动：**
+- **技能树连线（`skill-tree.tsx`）：** 彻底移除 `onEdgeClick` 自动删除逻辑，改用自定义连线组件 `DeletableEdge`（基于 `BaseEdge` + `EdgeLabelRenderer` + `getBezierPath`）：
+  - 单击连线先「选中」→ 连线变红（stroke `#ef5350`、加粗）；
+  - 选中后在连线中点出现红色圆形 `×` 按钮，点 `×` 才真正删除（`×` 点击本身即显式同意，不依赖浏览器弹窗）；
+  - 注册 `edgeTypes={{ deletable }}`，flowEdges 改用 `type:"deletable"` 并注入 `data.onDelete`，经 `edgeDeleteRef` 拿到最新删除逻辑；保留键盘 `onEdgesDelete`（先选中再按删除键，同属显式操作）。
+  - 底部提示更新为「想删连线先单击选中它（变红），再点中间的 × 删除」。
+- **日历记录（`plan-calendar.tsx`）：** 当日详情每条记录行新增垃圾桶按钮，点击后行内出现「确定删除这条记录？[删除][取消]」二次确认（`deletingId` 状态，应用内确认，同样不用 `window.confirm`）；确认后 `deleteEntry` 删 `time_entries` 并刷新。
+
+**教训：** IDE 预览 webview 会吞掉 `window.confirm`，凡需用户确认的破坏性操作一律用应用内 UI（选中态 / 行内二次确认按钮），不依赖浏览器原生弹窗。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/components/plan/skill-tree.tsx` | `DeletableEdge` 自定义连线 + `edgeTypes`/`edgeDeleteRef`，移除 `onEdgeClick` 自动删除，提示文案 |
+| `src/components/plan/plan-calendar.tsx` | 每条记录加删除按钮 + `deletingId` 行内二次确认 + `deleteEntry` |
+
+**验证状态：** TypeScript 类型检查通过；dev server（:3005）热重载编译成功。待用户刷新浏览器自测。

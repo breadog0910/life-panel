@@ -60,7 +60,7 @@ export default function ScheduleCard() {
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-[#1565c0] text-sm">📅 今日日程</h3>
         <button
-          onClick={() => router.push("/time")}
+          onClick={() => router.push("/plan")}
           className="text-xs text-[#42a5f5] hover:text-[#1e88e5] flex items-center gap-1 transition-colors"
         >
           <Plus className="size-3" /> 添加

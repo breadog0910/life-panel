@@ -23,12 +23,22 @@ export default function QuickReflection() {
     if (!content.trim() || !user) return;
     setSaving(true);
     setError(null);
-    const { error: insertError } = await supabase.from("reflections").insert({
+    // 同时写入 entries 表（笔记灵感库）和 reflections 表（兼容旧版）
+    const { error: insertError } = await supabase.from("entries").insert({
+      user_id: user.id,
+      type: "note",
+      content: content.trim(),
+      mood: mood || "😊",
+      source: "web",
+      category: "灵感",
+    });
+    // 兼容旧版 reflections 表
+    supabase.from("reflections").insert({
       user_id: user.id,
       content: content.trim(),
       mood: mood || "😊",
       source: "web",
-    });
+    }).then(() => {}, () => {});
     setSaving(false);
 
     if (insertError) {
