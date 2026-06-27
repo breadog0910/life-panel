@@ -524,24 +524,54 @@ class Companion:
 
 # ── Entry ──────────────────────────────────────────────
 
+def _pid_is_companion(pid):
+    """True only if `pid` is a live python process — guards against PID
+    recycling: a stale companion.pid may now point at an unrelated process."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+        kernel32.QueryFullProcessImageNameW.argtypes = [
+            wintypes.HANDLE,
+            wintypes.DWORD,
+            wintypes.LPWSTR,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            size = wintypes.DWORD(1024)
+            buf = ctypes.create_unicode_buffer(size.value)
+            if not kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                return False
+            return "python" in buf.value.lower()
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return False
+
+
 if __name__ == "__main__":
-    # ── Single instance check ──────────────────────────
+    # ── Single instance check (robust against PID recycling) ──
     if os.path.exists(PID_FILE):
+        running = False
         try:
             with open(PID_FILE) as f:
                 old_pid = int(f.read().strip())
-            # Windows: check if process is alive via ctypes
-            import ctypes
-            kernel32 = ctypes.windll.kernel32
-            handle = kernel32.OpenProcess(0x0400, False, old_pid)  # PROCESS_QUERY_INFORMATION
-            if handle:
-                kernel32.CloseHandle(handle)
-                print(f"Companion already running (PID {old_pid})")
-                sys.exit(0)
-        except (ValueError, FileNotFoundError):
-            pass
+            running = old_pid != os.getpid() and _pid_is_companion(old_pid)
         except Exception:
-            pass
+            running = False
+        if running:
+            print(f"Companion already running (PID {old_pid})")
+            sys.exit(0)
         # Stale PID — remove and continue
         try:
             os.remove(PID_FILE)

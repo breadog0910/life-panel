@@ -12,3 +12,7 @@ skills-lock.json
 
 .vercel
 .env*
+
+# 桌面悬浮窗运行产物
+desktop/companion.pid
+desktop/__pycache__/

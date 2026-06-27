@@ -592,3 +592,30 @@
 | `src/components/plan/plan-calendar.tsx` | 每条记录加删除按钮 + `deletingId` 行内二次确认 + `deleteEntry` |
 
 **验证状态：** TypeScript 类型检查通过；dev server（:3005）热重载编译成功。待用户刷新浏览器自测。
+
+---
+
+### 2026-06-27 #26 — 修复：桌面悬浮窗「启动不了」（残留 PID 误判）
+
+**现象：** 双击 `companion-start.bat` / `npm run companion` 后悬浮窗不出现，也没有任何报错提示。
+
+**根因：** `companion.py` 的单实例检查只校验「`companion.pid` 里的 PID 号是否被占用」，不校验占用者是不是悬浮窗本身。而 `companion.pid` 仅在**正常退出**时删除——上次若崩溃 / 被杀 / 关机，pid 文件残留；Windows 又会把该 PID 号回收给无关进程，于是 `OpenProcess` 成功 → 脚本误判「已在运行」→ `sys.exit(0)`。再加 `pythonw` 无控制台，`print` 的提示用户看不到，表现就是「双击没反应」。
+
+**改动（`desktop/companion.py`）：**
+- 新增 `_pid_is_companion(pid)`：用 `QueryFullProcessImageNameW`（`PROCESS_QUERY_LIMITED_INFORMATION`）取得占用该 PID 的进程映像路径，仅当其为 `python` 进程时才判定「确有伙伴在运行」。
+- 入口单实例检查改为：仅当 `old_pid != 当前进程` 且 `_pid_is_companion(old_pid)` 为真才退出；否则视 `companion.pid` 为残留，删除后继续启动。
+
+**验证：**
+- 残留/被回收的 PID（实测保留死 PID 3416）→ 新实例正常启动并改写 pid ✅
+- 真有伙伴在运行 → 第二个实例正确输出 `Companion already running (PID …)` 并退出，仅保留一个进程 ✅
+- 环境确认正常：Python 3.12.10 / Pillow 12.2.0 / `pythonw` 可用。
+
+**附带：** `.gitignore` 增加 `desktop/companion.pid`、`desktop/__pycache__/`，避免运行产物入库。
+
+**教训：** PID 文件做单实例锁必须校验进程身份（映像名/命令行），否则 PID 回收会造成「永远启动不了」；`pythonw` 会吞掉所有控制台输出，调试时改用 `python` 跑以暴露异常。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | `_pid_is_companion` 进程身份校验 + 入口单实例逻辑加固 |
+| `.gitignore` | 忽略 `desktop/companion.pid`、`desktop/__pycache__/` |
