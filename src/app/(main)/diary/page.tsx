@@ -17,11 +17,14 @@ import {
   Sparkles,
   ExternalLink,
   ChevronDown,
+  Settings2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import type { Entry, EntryType } from "@/types/database";
 import { ImageUpload } from "@/components/image-upload";
+import { useCategories, type CategorySeed } from "@/lib/use-categories";
+import CategoryManager from "@/components/category-manager";
 
 const moods = [
   { emoji: "😊", label: "开心" },
@@ -37,7 +40,9 @@ const typeFilters: { key: EntryType | "all"; label: string; icon: any }[] = [
   { key: "link", label: "链接", icon: LinkIcon },
 ];
 
-const categoryOptions = ["工作", "学习", "生活", "灵感", "心情", "其他"];
+const ENTRY_SEEDS: CategorySeed[] = ["工作", "学习", "生活", "灵感", "心情", "其他"].map(
+  (name) => ({ kind: null, name })
+);
 
 export default function DiaryPage() {
   const { user } = useAuth();
@@ -47,6 +52,14 @@ export default function DiaryPage() {
   const [typeFilter, setTypeFilter] = useState<EntryType | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  const {
+    categories: userCategories,
+    add: addCategory,
+    rename: renameCategory,
+    remove: removeCategory,
+  } = useCategories("entry", ENTRY_SEEDS);
+  const [managerOpen, setManagerOpen] = useState(false);
 
   // 新建/编辑状态
   const [editing, setEditing] = useState(false);
@@ -262,9 +275,12 @@ export default function DiaryPage() {
     }
   };
 
-  // 获取所有分类
+  // 获取所有分类（用户自定义 + 已有笔记里出现过的）
   const allCategories = Array.from(
-    new Set(entries.map((e) => e.category).filter(Boolean) as string[])
+    new Set([
+      ...userCategories.map((c) => c.name),
+      ...(entries.map((e) => e.category).filter(Boolean) as string[]),
+    ])
   );
 
   if (loading) {
@@ -585,7 +601,15 @@ export default function DiaryPage() {
 
           {/* 分类 */}
           <div>
-            <label className="text-xs text-[#90a4ae] mb-1.5 block">分类</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-[#90a4ae]">分类</label>
+              <button
+                onClick={() => setManagerOpen(true)}
+                className="text-xs text-[#42a5f5] hover:text-[#1e88e5] flex items-center gap-1"
+              >
+                <Settings2 className="size-3" /> 管理分类
+              </button>
+            </div>
             <div className="relative">
               <select
                 value={editEntry.category || ""}
@@ -593,9 +617,12 @@ export default function DiaryPage() {
                 className="w-full border border-[#e3f2fd] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#42a5f5]/30 appearance-none bg-white pr-8"
               >
                 <option value="">未分类</option>
-                {categoryOptions.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                {userCategories.map((c) => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
                 ))}
+                {editEntry.category && !userCategories.some((c) => c.name === editEntry.category) && (
+                  <option value={editEntry.category}>{editEntry.category}</option>
+                )}
               </select>
               <ChevronDown className="size-4 absolute right-3 top-1/2 -translate-y-1/2 text-[#90a4ae] pointer-events-none" />
             </div>
@@ -692,6 +719,27 @@ export default function DiaryPage() {
             ))
           )}
         </div>
+      )}
+
+      {managerOpen && (
+        <CategoryManager
+          title="管理笔记分类"
+          categories={userCategories}
+          onAdd={async (name) => {
+            await addCategory(name);
+          }}
+          onRename={async (id, name) => {
+            const c = userCategories.find((x) => x.id === id);
+            await renameCategory(id, name);
+            if (c && editEntry.category === c.name) setEditEntry((p) => ({ ...p, category: name }));
+          }}
+          onRemove={async (id) => {
+            const c = userCategories.find((x) => x.id === id);
+            await removeCategory(id);
+            if (c && editEntry.category === c.name) setEditEntry((p) => ({ ...p, category: undefined }));
+          }}
+          onClose={() => setManagerOpen(false)}
+        />
       )}
     </div>
   );

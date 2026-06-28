@@ -2,7 +2,7 @@ import GreetingBar from "@/components/greeting-bar";
 import PomodoroCard from "@/components/pomodoro-card";
 import QuickReflection from "@/components/quick-reflection";
 import ScheduleCard from "@/components/schedule-card";
-import DesktopReflections from "@/components/desktop-reflections";
+import AddToHomeCard from "@/components/add-to-home-card";
 
 export default function HomePage() {
   return (
@@ -12,8 +12,8 @@ export default function HomePage() {
         <PomodoroCard />
         <QuickReflection />
         <ScheduleCard />
-        <DesktopReflections />
       </div>
+      <AddToHomeCard />
     </div>
   );
 }

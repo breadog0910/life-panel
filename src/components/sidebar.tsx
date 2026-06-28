@@ -8,7 +8,6 @@ import {
   BookOpen,
   Wallet,
   Map,
-  BarChart3,
   Settings,
   Sparkles,
   ChevronLeft,
@@ -22,7 +21,6 @@ const navItems = [
   { href: "/diary", label: "笔记灵感库", icon: BookOpen },
   { href: "/plan", label: "计划中心", icon: Map },
   { href: "/finance", label: "记账", icon: Wallet },
-  { href: "/stats", label: "数据统计", icon: BarChart3 },
   { href: "/partner", label: "伙伴设置", icon: Settings },
   { href: "/settings/ai", label: "AI 智能设置", icon: Sparkles },
 ];
@@ -34,7 +32,7 @@ function UserFooter() {
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2 min-w-0">
         <div className="size-8 rounded-full bg-gradient-to-br from-[#90caf9] to-[#42a5f5] flex items-center justify-center text-sm shrink-0">
-          🐱
+          🐕
         </div>
         <span className="text-xs text-[#64b5f6] truncate" title={user?.email}>
           {user?.email?.split("@")[0]}

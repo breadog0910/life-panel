@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Target, Bell, Network, Timer, Calendar } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Target, Network, Timer, Calendar } from "lucide-react";
 import SkillTree from "@/components/plan/skill-tree";
 import FocusTimer from "@/components/plan/focus-timer";
 import PlanCalendar from "@/components/plan/plan-calendar";
-import ReminderDrawer from "@/components/reminder-drawer";
 
 type Tab = "tree" | "timer" | "calendar";
 
@@ -17,13 +16,30 @@ const TABS: { key: Tab; label: string; icon: typeof Network }[] = [
 
 export default function PlanPage() {
   const [tab, setTab] = useState<Tab>("tree");
-  const [reminderOpen, setReminderOpen] = useState(false);
   const [preselectNode, setPreselectNode] = useState<{ id: string; title: string } | null>(null);
+  const [preselectPlan, setPreselectPlan] = useState<{ id: string; title: string; nodeId: string | null } | null>(
+    null
+  );
 
   const startTimerForNode = (id: string, title: string) => {
     setPreselectNode({ id, title });
     setTab("timer");
   };
+
+  const startFocusForPlan = (plan: { id: string; title: string; nodeId: string | null }) => {
+    setPreselectPlan(plan);
+    setTab("timer");
+  };
+
+  // 从今日概览「去专注」带 query 进入：/plan?focusPlan=<id>&t=<title>&n=<nodeId>
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const id = sp.get("focusPlan");
+    if (id) {
+      startFocusForPlan({ id, title: sp.get("t") || "专注", nodeId: sp.get("n") || null });
+      window.history.replaceState({}, "", "/plan");
+    }
+  }, []);
 
   return (
     <div className="space-y-3">
@@ -32,12 +48,6 @@ export default function PlanPage() {
         <h2 className="text-xl font-bold text-[#1565c0] flex items-center gap-2">
           <Target className="size-5" /> 🗺️ 计划中心
         </h2>
-        <button
-          onClick={() => setReminderOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium bg-[#fff3e0] text-[#e65100] hover:bg-[#ffe0b2] transition-colors"
-        >
-          <Bell className="size-4" /> 提醒 / 备忘
-        </button>
       </div>
 
       {/* Tab 切换 */}
@@ -61,11 +71,14 @@ export default function PlanPage() {
       {/* Tab 内容 */}
       {tab === "tree" && <SkillTree onStartTimer={startTimerForNode} />}
       {tab === "timer" && (
-        <FocusTimer preselectNode={preselectNode} onClearPreselect={() => setPreselectNode(null)} />
+        <FocusTimer
+          preselectNode={preselectNode}
+          onClearPreselect={() => setPreselectNode(null)}
+          preselectPlan={preselectPlan}
+          onClearPreselectPlan={() => setPreselectPlan(null)}
+        />
       )}
-      {tab === "calendar" && <PlanCalendar />}
-
-      <ReminderDrawer open={reminderOpen} onClose={() => setReminderOpen(false)} />
+      {tab === "calendar" && <PlanCalendar onStartFocusForPlan={startFocusForPlan} />}
     </div>
   );
 }

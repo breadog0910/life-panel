@@ -939,3 +939,113 @@
 | `desktop/companion.py` | 新增 `AVATAR_PRESETS` + `supabase_insert_entry_note`；右键菜单加「记点碎碎念」；新增 `open_quicknote` 快记窗（回车写 entries source=desktop）；`change_avatar` 重写为 Emoji 网格 + 本地图 chooser，新增 `_pick_emoji`/`_pick_image_file`；`BUILD_TAG` 更新 |
 | `src/components/partner-settings-form.tsx` | 下掉全部外观编辑（预览/模式/Emoji 网格/上传/行为/保存条），仅留启停 + 下载 + 换形象引导卡 |
 | `public/download/xiaoh.exe` | 重新打包同步（--clean 构建到 dist_new 绕文件锁 + selftest 校验，29,802,391 字节） |
+
+---
+
+### 2026-06-28 #38 — 手机端：去掉伙伴栏 + 猫换小狗 + 自定义「添加到桌面」封面
+
+**用户诉求：** "手机端不需要有伙伴栏"；"手机端能自定义这个添加到桌面的封面"（确认：上传自己的图片 + 概览首页加设置卡）；"把所有加载时和登录等界面的小猫 emoji 都换成小狗，换个可爱点的小狗"。
+
+**三件事：**
+1. **手机底部导航去掉「伙伴」**：`bottom-nav.tsx` 删掉 `/partner` 标签（手机底部现为 概览/笔记/计划/记账/统计 五项），清掉不再用的 `Settings` 图标导入。桌面端侧边栏仍保留伙伴设置入口。
+2. **界面猫 emoji 全换小狗 🐶**：加载页、网页登录页、伙伴登录门、侧边栏头像、网页伙伴页（待机+展开）、桌面伙伴消息卡、伙伴设置状态文案里的 🐱 一律换成更可爱的 🐶。仅 `api/partner/config/route.ts` 的后端默认值不动（非界面，且与桌面端 `companion.py` 默认保持一致）。
+3. **手机自定义「添加到桌面」封面**：概览首页新增 `AddToHomeCard` 设置卡——选一张图 → canvas 居中裁成 512×512 PNG → 上传到 Supabase Storage（复用 `uploadImage`/`entry_media` 公共桶）→ URL 存 `localStorage`（`homeIconUrl`）。新增客户端组件 `HomeScreenMeta`（挂在根 `layout.tsx`），读取该 URL 后向 `<head>` 注入 `apple-touch-icon`（iOS 添加到主屏幕用）、`icon`（安卓/标签）、`apple-mobile-web-app-*` meta、以及一份 blob 形式的 standalone manifest（安卓 Chrome）。改/清封面通过自定义事件 `homeicon:changed` 即时重注入。卡片内含 iOS/安卓添加步骤说明，并提示「iOS 改了封面要重新添加一次才生效」。
+
+**实现要点 / 取舍：** 封面图永久存在 Supabase（公共 URL 稳定），选择记录用 `localStorage`（封面本就是按设备生效，免去新建数据库列/迁移）。注入走客户端组件而非 Next metadata，因为 Supabase 是前端 token 鉴权、服务端拿不到用户态，且本就是按设备自定义。
+
+**验证：** `tsc --noEmit` exit=0（两次：去伙伴栏后、加封面功能后）；`next dev` 全部路由编译无报错；浏览器打开登录页确认 🐶 正常渲染、控制台无报错、`HomeScreenMeta` 全站挂载无异常。**未能本地验证**：上传到 Supabase Storage 的完整链路（需登录态 + 真机），以及 iOS/安卓「添加到主屏幕」用自定义封面（属真机行为）——这两步需用户登录后在手机上实测（eval 沙箱禁用 localStorage，无法在此驱动注入链路）。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/components/bottom-nav.tsx` | 删手机底部「伙伴」标签 + 清 `Settings` 导入 |
+| `src/components/app-shell.tsx` / `auth-form.tsx` / `companion/companion-auth-gate.tsx` / `sidebar.tsx` / `companion/page.tsx` / `desktop-reflections.tsx` / `partner-settings-form.tsx` | 🐱 → 🐶 |
+| `src/components/home-screen-meta.tsx` | 新增：按 `localStorage.homeIconUrl` 注入 apple-touch-icon / icon / manifest(blob) / iOS meta |
+| `src/components/add-to-home-card.tsx` | 新增：概览首页「添加到桌面·自定义封面」卡（裁方形 + 上传 + 预览 + 移除 + 说明） |
+| `src/app/layout.tsx` | 根布局挂载 `<HomeScreenMeta />` |
+| `src/app/(main)/page.tsx` | 概览首页加入 `<AddToHomeCard />` |
+
+### 2026-06-28 #39 — 小狗换柴犬全身 🐕 + 记账/灵感库分类支持用户自定义
+
+**用户诉求：** "换个可爱点的小狗"（确认：换成 🐕 柴犬全身）；"给记账和灵感库的标签分类这种要能用户自定义板块"（确认：默认分类「完全可编辑」+「不要颜色」）。
+
+**两件事：**
+1. **全站小狗 🐶 → 🐕**：#38 换的圆脸 🐶 觉得不够可爱，统一换成柴犬全身 🐕。加载页、登录页 Logo、伙伴登录门、侧边栏头像、网页伙伴页、桌面复盘卡、伙伴设置文案共 11 处全部替换（Grep 确认无 🐶 残留）；后端默认值 `api/partner/config/route.ts` 仍不动。
+2. **记账 / 笔记分类可自定义**：原来收支分类、笔记分类都是硬编码常量，现在像计划中心的「板块」一样可增删改。
+   - **统一一张表** `user_categories`：用 `module`（`finance`/`entry`）+ `kind`（记账区分 `income`/`expense`，笔记为 NULL）区分，省去为每模块单独建表。`transactions.category` / `entries.category` 本就是自由字符串，分类表只维护「可选标签清单」，**删分类不影响历史记录**（旧值原样保留）。
+   - **默认分类可编辑**：`useCategories` hook 首次进入发现该用户该模块空表时，把默认清单作为真实行 seed 进库，之后默认项也能改名/删除（对应「完全可编辑」）。
+   - **不带颜色**：分类只存名字（对应「不要颜色」）。
+   - **共享弹窗** `CategoryManager`：记账/笔记复用，列表内改名（onBlur/Enter 提交）、行内两步删除确认（满足项目「不用原生 confirm」约束）、底部新增。两页分类区都加了「管理分类」入口按钮。
+   - **legacy 值保留**：picker 渲染时若当前选中分类已不在清单（被删/旧值），额外补一个 chip/option，编辑历史记录不丢原分类。
+
+**实现要点 / 取舍：** seed-on-empty 让默认项可编辑；Next 默认 StrictMode 下 dev effect 双调用可能并发重复 seed，用 `seededForRef` 在判空后、insert 前同步置位规避（个人工具可接受残余风险）。
+
+**验证：** `tsc --noEmit` exit=0；`next dev` 对 `/finance`、`/diary` 均「✓ Compiled」无报错；浏览器打开无应用层报错。**未能本地验证**：seed / 增删改的完整 Supabase 链路需登录态实跑——**用户须先在 Supabase SQL Editor 运行 `migrate-user-categories.sql`**，再登录真机/网页实测。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `supabase/migrate-user-categories.sql` | 新增：`user_categories` 表 + 索引 + RLS（需手动运行） |
+| `src/types/database.ts` | 新增 `CategoryModule` / `CategoryKind` / `UserCategory` 类型 |
+| `src/lib/use-categories.ts` | 新增：分类数据 hook（加载 / 首次 seed / add / rename / remove） |
+| `src/components/category-manager.tsx` | 新增：共享分类管理弹窗 |
+| `src/app/(main)/finance/page.tsx` | 接入自定义收支分类（去硬编码常量 + 管理入口 + legacy chip） |
+| `src/app/(main)/diary/page.tsx` | 接入自定义笔记分类（去硬编码常量 + 管理入口 + legacy option） |
+| 多处界面组件 | 🐶 → 🐕（共 11 处） |
+
+### 2026-06-28 #40 — 修默认分类没导入 + 去掉数据统计板块 + 概览去掉桌面伙伴板块
+
+**用户诉求：** "管理分类没有把默认的导入进去"；"目前不需要数据统计板块，直接不要这个板块"；"今日概览不需要来自桌面伙伴的板块"。
+
+**1. 默认分类没导入（根因 + 修复）**：浏览器控制台显示对 Supabase 的请求是 `net::ERR_NAME_NOT_RESOLVED` / `ERR_INTERNET_DISCONNECTED`——也就是初始 `select` 因断网（或表不存在/RLS）直接失败。旧逻辑把「查询失败」当成「空表」，于是触发 seed 写默认分类，但 insert 同样失败；更糟的是 seed 前已经把 `seededForRef` 占住，导致**网络恢复后也不再补默认分类**。修复 `useCategories`：
+- `select` 返回 `error` 时只打日志并 `setLoaded(true)` 返回，**不 seed**（避免把失败误判成空表）；
+- seed 的 `insert` 若失败，**释放 `seededForRef`**（置回 null），下次加载可重试。
+- 仍只在「确认为空数组」时才 seed，保留 StrictMode 防重复。
+> 前提仍是：用户必须先在 Supabase 跑过 `migrate-user-categories.sql`，且网络能连到 Supabase；满足后首次进入即自动写入默认分类。
+
+**2. 去掉「数据统计」板块**：删除 `/stats` 页面与目录，移除手机底部导航 + 桌面侧边栏的入口，并清掉两处未再使用的 `BarChart3` 导入。
+
+**3. 今日概览去掉「桌面伙伴」板块**：首页 `(main)/page.tsx` 移除 `<DesktopReflections />` 渲染与导入，并删除已无人引用的 `desktop-reflections.tsx` 组件。
+
+**验证：** `tsc --noEmit` exit=0（删页面后清掉 `.next/types` 里残留的 stats 生成桩）；dev server 重新编译 `/`、`/finance` 均 200 无报错（删除组件瞬间的 ModuleBuildError 为 HMR 过渡，重编译后消失）。**未能本地验证渲染态**：此沙箱当前连不上 Supabase（`ERR_INTERNET_DISCONNECTED`），登录态拉不起来，默认分类 seed/CRUD 仍需用户在能联网的环境登录后实测。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/lib/use-categories.ts` | 加固 seed：select 失败不 seed；insert 失败释放重试位 |
+| `src/components/sidebar.tsx` / `bottom-nav.tsx` | 去 `/stats` 入口 + 清 `BarChart3` 导入 |
+| `src/app/(main)/stats/page.tsx` | 删除（连同空目录） |
+| `src/app/(main)/page.tsx` | 去掉 `<DesktopReflections />` 渲染与导入 |
+| `src/components/desktop-reflections.tsx` | 删除（已无引用） |
+
+### 2026-06-28 #41 — 日历日程规划改造 + 去掉提醒备忘 + 概览显示新建日程
+
+**用户诉求：** "日历板块中可以记一笔是前一天的日程规划用不同颜色和当日专注来区分，点击可去专注或者划去或打勾可以已完成变成和专注结束后一样，专注结束/点完成就变成专注记录和完成记录，去除提醒和备忘板块，把新建日程显示在今日概览上。" 经确认三个设计点（均选推荐）：①数据用 `time_entries` 加 `status` 列实现；②划去 = 标记取消并划线保留（可恢复/删除），不直接删数据；③今日概览卡带操作按钮（去专注/完成/划去）。
+
+**数据模型（核心）：** 给 `time_entries` 加一列 `status`——
+- `planned` = 待完成的日程规划（琥珀/橙色，可去专注 / 打勾完成 / 划去）；
+- `done` = 已完成的专注 / 记录（蓝色，旧逻辑）；
+- `cancelled` = 已划去（灰色划线保留）。
+- 旧数据 `status` 为 NULL，应用层一律视为 `done`（判别函数 `isPlanned/isCancelled/isDone`）。日程规划落到哪一天由 `created_at` 决定，因此**可记未来某天的规划**（提前安排）。
+
+**四件事：**
+1. **日历「记一笔」支持两态**：补记表单加「📌 日程规划（待做） / ✅ 已完成记录」切换。选中今天/未来默认当作日程规划（写 `status:"planned"`），过去默认当作已完成记录（`status:"done"`）。月历格用颜色区分：蓝色深浅 = 当天已完成专注时长；格子右上 `●` 橙点 = 当天有待完成的日程规划。当日详情拆成三段——「📌 待完成的日程规划」（琥珀卡）/「⏱ 已完成记录」（蓝卡，含复盘）/「🚫 已划去」（灰卡 line-through，可恢复/删除）。
+2. **点击规划三动作**：每条日程规划卡带「去专注 / 完成 / 划去」按钮。去专注 → 跳「专注计时」并带入该规划；打勾完成 → `status:"done"`（即刻变成已完成记录）；划去 → `status:"cancelled"`（灰色划线保留，可恢复 `RotateCcw` 或彻底删除 `Trash2`，行内二次确认）。
+3. **专注结束 = 把规划就地转成完成记录**：从规划点「去专注」时，把该 `planned` 行的 id 透传给 `FocusTimer`（`preselectPlan` + `planIdRef`）。专注结束 `finish()` 时，若来自规划则 **UPDATE 这一行**（`status:"done"` + 真实时长 + `created_at=now()`）而非新建——实现「专注结束就变成专注记录」，不产生重复条目。跨页（今日概览→专注）用 query 跳转 `/plan?focusPlan=<id>&t=<title>&n=<nodeId>`，plan 页用 `window.location.search` 读取后 `replaceState` 清 URL。
+4. **去除「提醒 / 备忘」板块**：删除 `reminder-drawer.tsx` 组件及计划中心页头的「提醒 / 备忘」入口按钮与抽屉。计划中心 Tab 仍为 技能树 / 专注计时 / 日历。
+5. **今日概览显示新建日程**：`ScheduleCard` 改为查询今日全部 `time_entries`，分「待完成的日程规划」（琥珀卡 + 去专注/完成/划去三按钮）与「已完成」（蓝色时间徽 + 标题 + 时长，只读）；`cancelled` 不在首页显示；空态「✨ 今天还没有安排～」。
+
+**验证：** `node node_modules/typescript/bin/tsc --noEmit` exit=0；dev server 重新编译 `/plan`、`/` 均返回 200，无报错。**未能本地验证渲染/数据态**：此沙箱连不上 Supabase（`ERR_INTERNET_DISCONNECTED`），登录态与 CRUD（记规划 / 去专注转完成 / 划去恢复 / 概览操作）需用户在能联网的环境登录后实测。
+
+**使用前需要做：** 在 Supabase SQL Editor 运行 `supabase/migrate-plan-schedule.sql`（给 `time_entries` 加 `status` 列）。不运行则「记一笔」选日程规划 / 打勾完成会报错（提示已内置）。
+
+**修改 / 新增文件：**
+| 文件 | 操作 |
+|------|------|
+| `supabase/migrate-plan-schedule.sql` | 新增：`ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS status TEXT`（需手动运行） |
+| `src/types/database.ts` | 新增 `TimeEntryStatus`；`TimeEntry` 加 `status?` |
+| `src/components/plan/plan-calendar.tsx` | 记一笔规划/记录切换 + 三动作（去专注/完成/划去）+ 恢复 + 颜色区分 + 三段当日详情 |
+| `src/components/plan/focus-timer.tsx` | `preselectPlan`/`planIdRef`；`finish()` 来自规划则就地 UPDATE 转 done；今日列表只显示 done |
+| `src/app/(main)/plan/page.tsx` | 去掉提醒抽屉；串联 `startFocusForPlan` + 读 query 跳转 |
+| `src/components/schedule-card.tsx` | 今日规划带操作按钮 + 已完成只读；去专注跳 `/plan?focusPlan=` |
+| `src/components/reminder-drawer.tsx` | 删除（去除提醒/备忘板块） |

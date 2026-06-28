@@ -1,13 +1,21 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Wallet, Plus, Trash2, Save, X } from "lucide-react";
+import { Wallet, Plus, Trash2, Save, X, Settings2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
-import type { Transaction } from "@/types/database";
+import type { Transaction, CategoryKind } from "@/types/database";
+import { useCategories, type CategorySeed } from "@/lib/use-categories";
+import CategoryManager from "@/components/category-manager";
 
-const EXPENSE_CATEGORIES = ["餐饮", "交通", "购物", "娱乐", "学习", "医疗", "住房", "其他"];
-const INCOME_CATEGORIES = ["工资", "奖金", "投资", "兼职", "红包", "其他"];
+const FINANCE_SEEDS: CategorySeed[] = [
+  ...["餐饮", "交通", "购物", "娱乐", "学习", "医疗", "住房", "其他"].map(
+    (name) => ({ kind: "expense" as CategoryKind, name })
+  ),
+  ...["工资", "奖金", "投资", "兼职", "红包", "其他"].map(
+    (name) => ({ kind: "income" as CategoryKind, name })
+  ),
+];
 
 function formatCurrency(n: number): string {
   return n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -18,15 +26,27 @@ export default function FinancePage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const {
+    categories,
+    loaded: catsLoaded,
+    add: addCategory,
+    rename: renameCategory,
+    remove: removeCategory,
+  } = useCategories("finance", FINANCE_SEEDS);
+  const [managerOpen, setManagerOpen] = useState(false);
+
   // Form state
   const [editing, setEditing] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"expense" | "income">("expense");
-  const [category, setCategory] = useState("餐饮");
+  const [category, setCategory] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
+
+  const currentCats = categories.filter((c) => c.kind === type);
+  const firstCatName = (k: CategoryKind) => categories.find((c) => c.kind === k)?.name ?? "";
 
   // Month filter
   const now = new Date();
@@ -57,6 +77,12 @@ export default function FinancePage() {
     loadTransactions();
   }, [loadTransactions]);
 
+  // 新建记录且未选分类时，默认选中当前类型的第一个分类
+  useEffect(() => {
+    if (!catsLoaded || !editing || editId) return;
+    if (!category && currentCats.length) setCategory(currentCats[0].name);
+  }, [catsLoaded, editing, editId, category, currentCats]);
+
   // Monthly summary
   const totalIncome = transactions
     .filter((t) => t.type === "income")
@@ -75,7 +101,7 @@ export default function FinancePage() {
   const resetForm = () => {
     setAmount("");
     setType("expense");
-    setCategory("餐饮");
+    setCategory(firstCatName("expense"));
     setNote("");
     setDate(new Date().toISOString().slice(0, 10));
     setEditId(null);
@@ -292,7 +318,7 @@ export default function FinancePage() {
                   <button
                     onClick={() => {
                       setType("expense");
-                      setCategory("餐饮");
+                      setCategory(firstCatName("expense"));
                     }}
                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
                       type === "expense"
@@ -305,7 +331,7 @@ export default function FinancePage() {
                   <button
                     onClick={() => {
                       setType("income");
-                      setCategory("工资");
+                      setCategory(firstCatName("income"));
                     }}
                     className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
                       type === "income"
@@ -336,21 +362,37 @@ export default function FinancePage() {
 
               {/* Category */}
               <div>
-                <label className="text-xs text-[#90a4ae] mb-1.5 block">分类</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs text-[#90a4ae]">分类</label>
+                  <button
+                    onClick={() => setManagerOpen(true)}
+                    className="text-xs text-[#42a5f5] hover:text-[#1e88e5] flex items-center gap-1"
+                  >
+                    <Settings2 className="size-3" /> 管理分类
+                  </button>
+                </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {(type === "expense" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map((cat) => (
+                  {currentCats.map((c) => (
                     <button
-                      key={cat}
-                      onClick={() => setCategory(cat)}
+                      key={c.id}
+                      onClick={() => setCategory(c.name)}
                       className={`px-3 py-1.5 rounded-lg text-xs transition-all ${
-                        category === cat
+                        category === c.name
                           ? "bg-[#e3f2fd] text-[#1565c0] font-medium"
                           : "bg-[#f5f9ff] text-[#5c8dc9] hover:bg-[#e3f2fd]"
                       }`}
                     >
-                      {cat}
+                      {c.name}
                     </button>
                   ))}
+                  {category && !currentCats.some((c) => c.name === category) && (
+                    <button className="px-3 py-1.5 rounded-lg text-xs bg-[#e3f2fd] text-[#1565c0] font-medium">
+                      {category}
+                    </button>
+                  )}
+                  {currentCats.length === 0 && !category && (
+                    <span className="text-xs text-[#90a4ae] py-1.5">点「管理分类」添加</span>
+                  )}
                 </div>
               </div>
 
@@ -403,6 +445,27 @@ export default function FinancePage() {
           )}
         </div>
       </div>
+
+      {managerOpen && (
+        <CategoryManager
+          title={`管理${type === "expense" ? "支出" : "收入"}分类`}
+          categories={currentCats}
+          onAdd={async (name) => {
+            await addCategory(name, type);
+          }}
+          onRename={async (id, name) => {
+            const c = categories.find((x) => x.id === id);
+            await renameCategory(id, name);
+            if (c && c.name === category) setCategory(name);
+          }}
+          onRemove={async (id) => {
+            const c = categories.find((x) => x.id === id);
+            await removeCategory(id);
+            if (c && c.name === category) setCategory("");
+          }}
+          onClose={() => setManagerOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -58,6 +58,9 @@ export interface Diary {
 }
 
 // 时间安排 & 计时
+// planned = 待完成的日程规划；done = 已完成专注/记录；cancelled = 划去（旧数据 null 视为 done）
+export type TimeEntryStatus = "planned" | "done" | "cancelled";
+
 export interface TimeEntry {
   id: string;
   user_id: string;
@@ -69,6 +72,7 @@ export interface TimeEntry {
   tags?: string[];
   node_id?: string;
   note?: string;
+  status?: TimeEntryStatus | null;
   created_at: string;
 }
 
@@ -166,4 +170,18 @@ export interface PartnerConfig {
   skin: string;
   position_x: number;
   position_y: number;
+}
+
+// 用户自定义分类/板块（记账 + 笔记灵感库）
+export type CategoryModule = "finance" | "entry";
+export type CategoryKind = "income" | "expense";
+
+export interface UserCategory {
+  id: string;
+  user_id: string;
+  module: CategoryModule;
+  kind?: CategoryKind | null;
+  name: string;
+  sort_order: number;
+  created_at: string;
 }

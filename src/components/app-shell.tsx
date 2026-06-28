@@ -12,7 +12,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f5f9ff]">
         <div className="text-center">
-          <div className="text-4xl animate-bounce mb-3">🐱</div>
+          <div className="text-4xl animate-bounce mb-3">🐕</div>
           <p className="text-sm text-[#5c8dc9]">加载中...</p>
         </div>
       </div>

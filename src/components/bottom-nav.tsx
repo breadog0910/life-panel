@@ -8,8 +8,6 @@ import {
   BookOpen,
   Wallet,
   Map,
-  BarChart3,
-  Settings,
 } from "lucide-react";
 
 const mobileNavItems = [
@@ -17,8 +15,6 @@ const mobileNavItems = [
   { href: "/diary", label: "笔记", icon: BookOpen },
   { href: "/plan", label: "计划", icon: Map },
   { href: "/finance", label: "记账", icon: Wallet },
-  { href: "/stats", label: "统计", icon: BarChart3 },
-  { href: "/partner", label: "伙伴", icon: Settings },
 ];
 
 export default function BottomNav() {

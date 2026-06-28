@@ -14,6 +14,7 @@ interface SessionRow {
   duration_minutes: number | null;
   node_id: string | null;
   note: string | null;
+  status?: string | null;
   created_at: string;
 }
 
@@ -38,9 +39,13 @@ const LS_KEY = "lp-focus-timer";
 export default function FocusTimer({
   preselectNode,
   onClearPreselect,
+  preselectPlan,
+  onClearPreselectPlan,
 }: {
   preselectNode: { id: string; title: string } | null;
   onClearPreselect: () => void;
+  preselectPlan?: { id: string; title: string; nodeId: string | null } | null;
+  onClearPreselectPlan?: () => void;
 }) {
   const { user } = useAuth();
 
@@ -79,6 +84,8 @@ export default function FocusTimer({
 
   const finishingRef = useRef(false);
   const restoredRef = useRef(false);
+  // 若由「日程规划 → 去专注」进入，记下该规划 id；结束时把它就地转成已完成记录而非新建
+  const planIdRef = useRef<string | null>(null);
 
   // 实时计算已专注秒数（运行中用墙钟时间，保证切页面/刷新后仍正确）
   const elapsed =
@@ -105,7 +112,9 @@ export default function FocusTimer({
         .order("created_at", { ascending: false }),
     ]);
     setNodes((ns as PlanNode[]) || []);
-    setSessions((ss as SessionRow[]) || []);
+    setSessions(
+      ((ss as SessionRow[]) || []).filter((r) => r.status !== "planned" && r.status !== "cancelled")
+    );
   }, [user]);
 
   useEffect(() => {
@@ -151,6 +160,16 @@ export default function FocusTimer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preselectNode]);
+
+  // 从「日程规划 → 去专注」进入：带入标题/节点并记下规划 id
+  useEffect(() => {
+    if (preselectPlan) {
+      planIdRef.current = preselectPlan.id;
+      setTitle(preselectPlan.title);
+      setAssocNodeId(preselectPlan.nodeId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectPlan]);
 
   // 每秒触发重渲染（仅运行中）
   useEffect(() => {
@@ -202,24 +221,53 @@ export default function FocusTimer({
       return;
     }
     const minutes = Math.max(1, Math.round(capped / 60));
-    const { data, error } = await supabase
-      .from("time_entries")
-      .insert({
-        user_id: user.id,
-        title: title.trim() || "专注",
-        duration_minutes: minutes,
-        pomodoro_count: Math.floor(minutes / 25),
-        node_id: assocNodeId,
-        tags: [],
-      })
-      .select("id")
-      .single();
-    if (error) {
-      setErrMsg("记录失败：" + error.message);
-      finishingRef.current = false;
-      return;
+    const planId = planIdRef.current;
+    let entryId: string | null = null;
+    if (planId) {
+      // 由日程规划进入：就地把这条规划转成已完成的专注记录
+      const { data, error } = await supabase
+        .from("time_entries")
+        .update({
+          title: title.trim() || "专注",
+          duration_minutes: minutes,
+          pomodoro_count: Math.floor(minutes / 25),
+          node_id: assocNodeId,
+          status: "done",
+          created_at: new Date().toISOString(),
+        })
+        .eq("id", planId)
+        .select("id")
+        .single();
+      if (error) {
+        setErrMsg("记录失败：" + error.message);
+        finishingRef.current = false;
+        return;
+      }
+      entryId = (data as { id: string }).id;
+      planIdRef.current = null;
+      onClearPreselectPlan?.();
+    } else {
+      const { data, error } = await supabase
+        .from("time_entries")
+        .insert({
+          user_id: user.id,
+          title: title.trim() || "专注",
+          duration_minutes: minutes,
+          pomodoro_count: Math.floor(minutes / 25),
+          node_id: assocNodeId,
+          status: "done",
+          tags: [],
+        })
+        .select("id")
+        .single();
+      if (error) {
+        setErrMsg("记录失败：" + error.message);
+        finishingRef.current = false;
+        return;
+      }
+      entryId = (data as { id: string }).id;
     }
-    setFinished({ entryId: (data as { id: string }).id, minutes, title: title.trim() || "专注" });
+    setFinished({ entryId, minutes, title: title.trim() || "专注" });
     setPickParentId(assocNodeId || "");
     setReflectText("");
     setReflectToNotes(false);

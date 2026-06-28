@@ -20,7 +20,7 @@ export function CompanionAuthGate({
   if (loading) {
     return (
       <div className="w-full h-screen flex items-center justify-center bg-transparent">
-        <div className="text-6xl animate-breathe select-none drop-shadow-lg">🐱</div>
+        <div className="text-6xl animate-breathe select-none drop-shadow-lg">🐕</div>
       </div>
     );
   }
@@ -31,7 +31,7 @@ export function CompanionAuthGate({
       <div className="w-full h-screen flex items-center justify-center p-4 bg-white">
         <div className="w-full max-w-[260px]">
           <div className="text-center mb-4">
-            <div className="text-5xl mb-2">🐱</div>
+            <div className="text-5xl mb-2">🐕</div>
             <h3 className="text-sm font-semibold text-[#1565c0]">
               {isSignUp ? "注册伙伴账号" : "登录伙伴"}
             </h3>

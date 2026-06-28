@@ -194,7 +194,7 @@ function CompanionPanel() {
 
           {/* Character */}
           <div className="text-6xl animate-breathe select-none drop-shadow-lg transition-transform group-hover:scale-110">
-            🐱
+            🐕
           </div>
           <span className="text-[10px] text-[#5c8dc9] mt-1 font-medium">小H</span>
           <span className="text-[9px] text-[#90a4ae] mt-0.5 opacity-60">点击打开面板</span>
@@ -207,7 +207,7 @@ function CompanionPanel() {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#e3f2fd] shrink-0">
             <div className="flex items-center gap-2">
-              <span className="text-2xl">🐱</span>
+              <span className="text-2xl">🐕</span>
               <span className="font-semibold text-[#1565c0] text-sm">小H</span>
             </div>
             <div className="flex items-center gap-2">

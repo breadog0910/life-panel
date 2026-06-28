@@ -68,7 +68,7 @@ export default function PartnerSettingsForm() {
                 桌面悬浮窗
               </p>
               <p className="text-[10px] text-[#90a4ae]">
-                {companionRunning ? "🐱 小H正在桌面上陪你" : "悬浮窗未启动"}
+                {companionRunning ? "🐕 小H正在桌面上陪你" : "悬浮窗未启动"}
               </p>
             </div>
           </div>

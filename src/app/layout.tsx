@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import HomeScreenMeta from "@/components/home-screen-meta";
 
 export const metadata: Metadata = {
   title: "人生面板",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <HomeScreenMeta />
+        {children}
+      </body>
     </html>
   );
 }

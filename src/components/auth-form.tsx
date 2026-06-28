@@ -39,7 +39,7 @@ export default function AuthForm() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="text-5xl mb-3">🐱</div>
+          <div className="text-5xl mb-3">🐕</div>
           <h1 className="text-2xl font-bold text-[#1565c0]">人生面板</h1>
           <p className="text-sm text-[#5c8dc9] mt-1">记录生活，见证成长</p>
         </div>
