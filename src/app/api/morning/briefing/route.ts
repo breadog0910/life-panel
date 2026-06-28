@@ -69,6 +69,45 @@ async function getGithub() {
   return out.length ? out : null;
 }
 
+async function getTech() {
+  const r = await fetchTimeout("https://60s.viki.moe/v2/it-news", {
+    headers: { "User-Agent": UA },
+    next: { revalidate: 1800 },
+  });
+  const j = await r.json();
+  const arr = Array.isArray(j?.data) ? j.data : null;
+  if (!arr) return null;
+  const out = arr
+    .filter((x: { title?: unknown }) => x && typeof x.title === "string")
+    .slice(0, 6)
+    .map((x: { title: string; link?: string }) => ({
+      title: x.title,
+      url: typeof x.link === "string" ? x.link : null,
+    }));
+  return out.length ? out : null;
+}
+
+async function getFinanceNews() {
+  const r = await fetchTimeout(
+    "https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2516&num=8&page=1",
+    {
+      headers: { "User-Agent": UA, Referer: "https://finance.sina.com.cn/" },
+      next: { revalidate: 1800 },
+    }
+  );
+  const j = await r.json();
+  const arr = Array.isArray(j?.result?.data) ? j.result.data : null;
+  if (!arr) return null;
+  const out = arr
+    .filter((x: { title?: unknown }) => x && typeof x.title === "string")
+    .slice(0, 6)
+    .map((x: { title: string; url?: string }) => ({
+      title: x.title,
+      url: typeof x.url === "string" ? x.url : null,
+    }));
+  return out.length ? out : null;
+}
+
 async function getHot() {
   const r = await fetchTimeout("https://60s.viki.moe/v2/weibo", {
     headers: { "User-Agent": UA },
@@ -89,16 +128,20 @@ async function getHot() {
 }
 
 export async function GET() {
-  const [sixty, github, hot] = await Promise.allSettled([
+  const [sixty, tech, finance, hot, github] = await Promise.allSettled([
     getSixty(),
-    getGithub(),
+    getTech(),
+    getFinanceNews(),
     getHot(),
+    getGithub(),
   ]);
   const val = <T,>(r: PromiseSettledResult<T>) =>
     r.status === "fulfilled" ? r.value : null;
   return NextResponse.json({
     sixty: val(sixty),
-    github: val(github),
+    tech: val(tech),
+    finance: val(finance),
     hot: val(hot),
+    github: val(github),
   });
 }

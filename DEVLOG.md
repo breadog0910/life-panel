@@ -1157,3 +1157,24 @@
 - `src/components/morning-briefing.tsx`：金融块替换为「GitHub 热门新仓库」块——序号（前 3 金色）+ 仓库名链接 + ⭐ star 数（`formatStars`，≥1000 显示 k），第二行显示语言（蓝）· 简介。类型 `Fin`→`Repo`、`Briefing.finance`→`github`、图标 `Github`（lucide-react 已不导出）→ `GitBranch`。
 
 **验证：** `tsc --noEmit` exit=0；`/api/morning/briefing` 返回 200，本机（国内网络）`github` 为 `null` 属正常——api.github.com 被墙；线上 Vercel（美国）可正常拉取。已做"拉不到则不显示该块"兜底。今日大事 / 微博热搜 仍正常。
+
+---
+
+### 2026-06-28 #46 — 晨间简报：今日大事置顶 + 新增科技/金融领域新闻 + 板块重排
+
+**用户诉求：** 把今日大事放最前面，加一个科技领域新闻，再放金融领域新闻，再放热搜，再放仓库。
+
+**改动：**
+- `src/app/api/morning/briefing/route.ts`：新增两个数据源——
+  - `getTech()` → `60s.viki.moe/v2/it-news`（IT之家实时科技新闻），取前 6（标题 + 链接）。
+  - `getFinanceNews()` → 新浪滚动新闻 `feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2516`（lid=2516 财经，带 `Referer: finance.sina.com.cn`），取前 6（标题 + 链接）。
+  - `GET` 并行拉取并按目标顺序返回 `{ sixty, tech, finance, hot, github }`。
+- `src/components/morning-briefing.tsx`：新增 `type News`、`Briefing` 加 `tech`/`finance`，导入图标 `Cpu`（科技）/`TrendingUp`（金融）；JSX 五块重排为 **今日大事 → 科技领域 → 金融领域 → 微博热搜 → GitHub 热门新仓库**。科技块标题/链接 hover 蓝 `#1565c0`，金融块绿 `#2e7d32`。
+
+**验证：** `tsc --noEmit` exit=0；`/api/morning/briefing` 返回 200，`keys=sixty,tech,finance,hot,github`，计数 sixty.news=15 / tech=6 / finance=6 / hot=10 / github=null（本机墙，线上正常）。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/app/api/morning/briefing/route.ts` | 修改：新增 `getTech`(it-news) / `getFinanceNews`(新浪滚动)，重排返回顺序 |
+| `src/components/morning-briefing.tsx` | 修改：新增科技/金融两块，板块重排 |
