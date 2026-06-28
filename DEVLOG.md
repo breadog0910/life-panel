@@ -891,3 +891,51 @@
 |------|------|
 | `desktop/companion.py` | `BUILD_TAG` + `--selftest`；`_win32_foreground` 补全 ctypes 签名修句柄截断、去 Alt；`_grab_keyboard` 收敛重夺时机；`open_chat` 回退本地聊天窗 + 已开短路 |
 | `public/download/xiaoh.exe` | 重新打包同步（--clean 全新构建 + selftest 校验，29.8MB） |
+
+---
+
+### 2026-06-28 #36 — 下掉聊天功能 + 输入窗口改普通带标题栏窗口（彻底修打字）
+
+**背景纠偏：** #35 自认为"补全 ctypes 签名修好句柄截断、打字应该好了"，但用户实测**仍然打不了字**。结合多轮反复，得出真正结论：聊天窗、专注面板、复盘窗都是 `overrideredirect(True)` 的**无边框窗口**——Win11 把这种窗口当成"气泡/提示"，**永远不允许它成为前台/活动窗口**。无论怎么用 `AttachThreadInput` / `SetForegroundWindow` 强夺，键盘事件都不会稳定送进去，**而且用户连"点一下窗口手动激活"这条退路都没有**（无边框窗点击也不会被系统激活）。ctypes 截断只是其中一环，不是根因。
+
+**两件事：**
+1. **彻底移除聊天功能**（用户决策："先不做聊天窗口，把这个功能先下掉"）：删掉菜单项「和我聊天」、整个聊天窗、所有 `_chat_*` 方法、`open_chat`、模块级 mem0/LLM plumbing（`AI_PROVIDERS`、`load_chat/save_chat/retrieve_facts/merge_facts` 等记忆事实库、`_http_post_json`、`supabase_get_ai_settings`、`llm_chat`），共删约 504 行。保留：专注计时 + 复盘记录 + 同步网页 + 登录。
+2. **把需要打字的窗口改成带标题栏的普通窗口**（根治打字）：
+   - `open_panel`（专注面板）：去掉 `overrideredirect(True)`，改 `title("⏱ 专注计时")` + `resizable(False)`，删掉自绘蓝色标题栏 + 拖拽逻辑（`_panel_press/_panel_motion`，已无引用），打开后 `_grab_keyboard` 把焦点落到「正在做什么」输入框。
+   - `show_finish_frame`（复盘窗）：去掉 `overrideredirect(True)`，改 `title("复盘 · 记录收获")`。
+   - 两个窗都加 `WM_DELETE_WINDOW` 协议，点系统关闭按钮时正确清空 `self.panel/finish_win`。
+   - 登录窗本就是普通带标题栏窗口，保持不变。
+
+**为什么这次能行：** 普通带标题栏窗口是系统认可的、可激活的应用窗口——即使程序化抢焦点失败，**用户也能直接点窗口/标题栏激活再打字**，这条退路是无边框窗口给不了的。`_win32_foreground/_grab_keyboard` 保留用于打开时自动置顶+落焦，对普通窗口无害。
+
+**验证：** `py_compile` exit=0；`--clean` 全新打包（`Build complete!`，`小H.exe` 29,799,647 字节）；`小H.exe --selftest` 写出 `selftest.txt == 2026-06-28-decorated-input-windows-typing-fix`（= BUILD_TAG，**确认 exe 为最新源码**）；已同步到 `public/download/xiaoh.exe`。打字能否输入仍需用户本机交互确认（这次预期：面板/复盘窗会带系统标题栏，点输入框可直接打字）。
+
+**皮肤/换形象与网页同步（回答用户提问）：** 当前换形象是**装包后用 exe 右键「换形象…」**选本地图片，写 `%APPDATA%\小H\companion_config.json`（纯本地）；网页「伙伴设置」改的存 Supabase `partner_config`。**两者目前互不相通**——exe 不会读网页配置，网页也读不到 exe 的本地图。若要"网页上改、悬浮窗自动同步"，需让 exe 定时拉取 Supabase `partner_config` 并下载图片落地（类似现在的登录 + time_entries 同步机制），属于下一步可做项，待用户确认范围。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | 删除聊天功能（约 504 行）；`open_panel`/`show_finish_frame` 去 `overrideredirect` 改普通带标题栏窗口；删 `_panel_press/_panel_motion`；加 `WM_DELETE_WINDOW`；面板自动落焦输入框；`BUILD_TAG` 更新 |
+| `public/download/xiaoh.exe` | 重新打包同步（--clean 全新构建 + selftest 校验，29.8MB） |
+
+---
+
+### 2026-06-28 #37 — 碎碎念快记窗口 + 换形象统一为「桌面一套方案」
+
+**用户诉求：** "要有一个窗口可以输入我的碎碎念，可以类似专注的形式多一个窗口，最好是有一个气泡我就能直接输入我的所想，然后直接同步至网页；换皮肤和换形象只要保留一套方案即可，让用户方便使用。" 经确认：外观只在悬浮窗右键改、碎碎念走右键菜单入口、网页端换形象那部分随之下掉。
+
+**三件事：**
+1. **新增「记点碎碎念」快记窗口**（仿专注面板的独立窗口）：右键菜单加「记点碎碎念」（在「开始专注」之上）→ `open_quicknote` 弹出带系统标题栏的普通装饰窗（橙色 `#ffb74d` 边框、`tk.Text(height=4)` 输入框）。输入想法后**回车直接保存**（`<Return>` 绑 `do_save` 并 `return "break"`；`<Shift-Return>` 留作换行），通过现有登录 token POST `/rest/v1/entries` 写 `{type:"text", content, source:"desktop"}`——**网页「笔记灵感库」即时可见**。未登录会提示先登录；保存成功后关窗并气泡提示「碎碎念已记下 ✨」。打开时 `_grab_keyboard` 自动落焦输入框。
+2. **换形象统一为桌面一套方案**：把 `change_avatar` 从"只能选本地图片"升级为完整 chooser 窗口——3 列 **Emoji 预设网格**（9 个，与网页原预设一致，当前形象高亮）+ 底部「📁 选本地图片 / GIF…」。选 Emoji 走 `_pick_emoji`（设 `mode="emoji"`、清空 `image_path`）、选图走 `_pick_image_file`（复制到 `%APPDATA%\小H\avatar.<ext>`、设 image/gif 模式）。两者都 `save_config()` + `apply_config()` 即点即换、无需登录。这样换 emoji 与换图都收敛到桌面端，**网页不再承担外观编辑**。
+3. **网页「伙伴设置」下掉全部外观编辑**：`partner-settings-form.tsx` 整体精简为三张卡——悬浮窗启停状态、下载（`/download/xiaoh.exe`，文案引导右键「记点碎碎念」「开始专注」）、以及「🎨 想换形象/皮肤？」说明卡（引导"在悬浮窗右键 →「换形象…」，即点即换、无需登录"）。删除预览/模式切换/Emoji 网格/上传/行为设置/保存条及相关 state 与 handler。
+
+**验证：** `py_compile` exit=0；`node node_modules/typescript/bin/tsc --noEmit` exit=0（`npx` 被执行策略禁用，改直跑 tsc）；因用户正运行 `desktop/dist/小H.exe` 锁住文件，`--clean` 改 build 到 `desktop/dist_new`（`Build complete!`），`小H.exe --selftest` 写出 `selftest.txt == 2026-06-28-quicknote-desktop-skin-only`（= BUILD_TAG，**确认 exe 为最新源码**）；copy 到 `public/download/xiaoh.exe`（**29,802,391 字节 ≈ 29.8MB**）。碎碎念打字/回车同步、换形象 chooser（emoji + 本地图）仍需用户本机双击新 exe 实测。
+
+**提醒：** `desktop/dist/小H.exe` 本地副本仍是旧版（被运行中进程锁定未覆盖）；测试请用 `public/download/xiaoh.exe` 的新版，或关闭运行中的小H后替换。线上下载更新需用户自行 git push + Vercel 重新部署。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | 新增 `AVATAR_PRESETS` + `supabase_insert_entry_note`；右键菜单加「记点碎碎念」；新增 `open_quicknote` 快记窗（回车写 entries source=desktop）；`change_avatar` 重写为 Emoji 网格 + 本地图 chooser，新增 `_pick_emoji`/`_pick_image_file`；`BUILD_TAG` 更新 |
+| `src/components/partner-settings-form.tsx` | 下掉全部外观编辑（预览/模式/Emoji 网格/上传/行为/保存条），仅留启停 + 下载 + 换形象引导卡 |
+| `public/download/xiaoh.exe` | 重新打包同步（--clean 构建到 dist_new 绕文件锁 + selftest 校验，29,802,391 字节） |

@@ -24,7 +24,7 @@ import urllib.parse
 
 # 打包校验标记：每次构建前手动改这里，构建后用 `小H.exe --selftest` 写出此值，
 # 即可确认 dist 里的 exe 真的是最新源码（之前出现过 PyInstaller 缓存导致重打包是空操作）。
-BUILD_TAG = "2026-06-28-inapp-chat-focusfix-mutex"
+BUILD_TAG = "2026-06-28-quicknote-desktop-skin-only"
 
 # ── Config ────────────────────────────────────────────
 # 默认网页面板地址；打包分发时可在 companion_config.json 用 "web_url" 覆盖为云端地址
@@ -69,7 +69,6 @@ POSITION_FILE = os.path.join(DATA_DIR, "companion_position.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "companion_config.json")
 PID_FILE = os.path.join(DATA_DIR, "companion.pid")
 AUTH_FILE = os.path.join(DATA_DIR, "companion_auth.json")
-CHAT_FILE = os.path.join(DATA_DIR, "companion_chat.json")
 
 TRANSPARENT_COLOR = "#010101"  # magic transparency key
 
@@ -83,6 +82,19 @@ DEFAULT_CONFIG = {
     "image_path": "",
     "web_url": DEFAULT_WEB_PANEL_URL,
 }
+
+# 换形象用的 Emoji 预设（与网页一致，桌面端就是唯一一套方案）
+AVATAR_PRESETS = [
+    ("cat", "🐱", "小H"),
+    ("dog", "🐶", "旺财"),
+    ("rabbit", "🐰", "小白"),
+    ("panda", "🐼", "团团"),
+    ("fox", "🦊", "小狐"),
+    ("frog", "🐸", "呱呱"),
+    ("cat2", "😺", "咪咪"),
+    ("bear", "🐻", "憨憨"),
+    ("penguin", "🐧", "豆豆"),
+]
 
 IDLE_PHRASES = [
     "今天也要加油呀～",
@@ -114,26 +126,6 @@ CLICK_PHRASES = [
     "嘿，保持微笑呀 🙂",
 ]
 
-# ── AI chat (reuse the model/key configured in web 设置→AI 智能设置) ──
-# provider -> (default api base, default model)
-AI_PROVIDERS = {
-    "deepseek": ("https://api.deepseek.com", "deepseek-chat"),
-    "qwen": ("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
-    "glm": ("https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
-    "doubao": ("https://ark.cn-beijing.volces.com/api/v3", ""),
-    "openai": ("https://api.openai.com/v1", "gpt-4o-mini"),
-    "anthropic": ("https://api.anthropic.com", "claude-3-haiku-20240307"),
-}
-
-# mem0 式记忆：从一段对话里抽取关于「用户本人」的离散事实条目（add 阶段）
-FACT_EXTRACTION_INSTRUCTION = (
-    "你是记忆抽取器。请从下面这段对话里，提炼关于「用户本人」值得长期记住的事实，"
-    "比如姓名/称呼、喜好、厌恶、目标、习惯、职业/身份、正在做的事、重要的人和事、约定、计划等。"
-    "每条是一句独立、具体、自包含的中文陈述（不要代词指代不明）。"
-    "与【已有记忆】比对，只输出【新增或更新】的事实，不要重复已有的。"
-    "严格只输出一个 JSON 数组，例如 [\"用户叫小明\",\"用户在备考研究生\"]；"
-    "如果这段对话没有值得长期记住的信息，就输出 []。不要输出任何其它文字。"
-)
 
 # ── Position / config persistence ─────────────────────
 
@@ -190,153 +182,6 @@ def clear_auth():
     except Exception:
         pass
 
-# ── Chat history + memory persistence (mem0-style fact store) ──
-
-def _facts_from_legacy_memory(blob):
-    """Old format stored memory as one '- ' bullet blob. Convert to discrete facts."""
-    facts = []
-    for line in (blob or "").splitlines():
-        t = line.strip().lstrip("-•*").strip()
-        if t:
-            facts.append({"id": len(facts) + 1, "text": t, "ts": time.time()})
-    return facts
-
-
-def load_chat():
-    """Return (messages, facts, summarized_upto). Survives restarts → companion 'remembers'.
-
-    facts: list of {id, text, ts} — mem0-style discrete memories (migrated from the
-    old single 'memory' string blob if an older chat file is found).
-    """
-    try:
-        if os.path.exists(CHAT_FILE):
-            with open(CHAT_FILE, "r", encoding="utf-8") as f:
-                d = json.load(f)
-            facts = d.get("facts")
-            if not isinstance(facts, list):
-                facts = _facts_from_legacy_memory(d.get("memory", ""))
-            return (
-                d.get("messages", []),
-                facts,
-                int(d.get("summarized_upto", 0)),
-            )
-    except Exception:
-        pass
-    return [], [], 0
-
-
-def save_chat(messages, facts, summarized_upto):
-    try:
-        with open(CHAT_FILE, "w", encoding="utf-8") as f:
-            json.dump(
-                {"messages": messages, "facts": facts, "summarized_upto": summarized_upto},
-                f, ensure_ascii=False, indent=2,
-            )
-    except Exception:
-        pass
-
-
-# ── mem0-style memory tokenisation / retrieval (no embeddings, pure stdlib) ──
-
-def _mem_tokens(s):
-    """Cheap language-agnostic token set: ASCII words + CJK chars & bigrams.
-
-    Used to score relevance between a query and a stored fact without any model
-    or vector DB — good enough for picking which memories to inject per message.
-    """
-    s = (s or "").lower()
-    tokens = set()
-    for w in re.findall(r"[a-z0-9]+", s):
-        if len(w) >= 2:
-            tokens.add(w)
-    cjk = re.findall(r"[\u4e00-\u9fff]", s)
-    for c in cjk:
-        tokens.add(c)
-    for i in range(len(cjk) - 1):
-        tokens.add(cjk[i] + cjk[i + 1])
-    return tokens
-
-
-def retrieve_facts(facts, query, k=6):
-    """mem0-style 'search': return up to k fact texts most relevant to query,
-    backfilled with the most recent facts so general context isn't lost."""
-    if not facts:
-        return []
-    qt = _mem_tokens(query)
-    scored = []
-    for f in facts:
-        text = f.get("text") if isinstance(f, dict) else str(f)
-        if not text:
-            continue
-        score = len(qt & _mem_tokens(text)) if qt else 0
-        scored.append((score, f.get("ts", 0) if isinstance(f, dict) else 0, text))
-    # relevant first (score desc, then recency desc)
-    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
-    picked = [t for (sc, ts, t) in scored if sc > 0][:k]
-    if len(picked) < k:
-        # backfill with most recent facts not already picked
-        recent = sorted(
-            (f for f in facts if isinstance(f, dict) and f.get("text")),
-            key=lambda f: f.get("ts", 0), reverse=True,
-        )
-        for f in recent:
-            if f["text"] not in picked:
-                picked.append(f["text"])
-            if len(picked) >= k:
-                break
-    return picked
-
-
-def merge_facts(facts, new_texts, cap=200):
-    """mem0-style 'add': append new fact texts, skipping exact/near-duplicates."""
-    existing_norm = {(_norm_fact(f.get("text")) if isinstance(f, dict) else _norm_fact(f)): True
-                     for f in facts}
-    next_id = max((f.get("id", 0) for f in facts if isinstance(f, dict)), default=0) + 1
-    for t in new_texts:
-        t = (t or "").strip()
-        if not t:
-            continue
-        n = _norm_fact(t)
-        if not n or n in existing_norm:
-            continue
-        facts.append({"id": next_id, "text": t, "ts": time.time()})
-        existing_norm[n] = True
-        next_id += 1
-    if len(facts) > cap:  # keep the most recent ones
-        facts = sorted(facts, key=lambda f: f.get("ts", 0))[-cap:]
-    return facts
-
-
-def _norm_fact(t):
-    return re.sub(r"\s+", "", (t or "").lower())
-
-
-def _first_json_array(t):
-    i, j = t.find("["), t.rfind("]")
-    return t[i:j + 1] if (i != -1 and j > i) else None
-
-
-def _parse_fact_list(text):
-    """Pull a list of fact strings out of a model reply (tolerant of code fences / stray text)."""
-    if not text:
-        return []
-    t = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.IGNORECASE).strip()
-    for cand in (t, _first_json_array(t)):
-        if not cand:
-            continue
-        try:
-            arr = json.loads(cand)
-            if isinstance(arr, list):
-                return [str(x).strip() for x in arr if str(x).strip()]
-        except Exception:
-            pass
-    out = []
-    for line in t.splitlines():
-        s = line.strip().lstrip("-•*0123456789. ").strip()
-        if s and s not in ("[", "]", "{", "}"):
-            out.append(s)
-    return out
-
 # ── Supabase REST (stdlib urllib only) ────────────────
 
 def _api(method, path, headers=None, payload=None, query=None):
@@ -367,27 +212,6 @@ def _api(method, path, headers=None, payload=None, query=None):
         except Exception:
             msg = str(e)
         return e.code, None, msg
-    except Exception as e:
-        return 0, None, "网络错误：" + str(e)
-
-
-def _http_post_json(url, headers, payload, timeout=60):
-    """POST JSON to an arbitrary URL (used for LLM APIs). Returns (status, json|None, err|None)."""
-    h = {"Content-Type": "application/json"}
-    if headers:
-        h.update(headers)
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=h, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            return resp.status, (json.loads(body) if body else None), None
-    except urllib.error.HTTPError as e:
-        try:
-            txt = e.read().decode("utf-8")
-        except Exception:
-            txt = str(e)
-        return e.code, None, "接口错误 %s：%s" % (e.code, txt[:300])
     except Exception as e:
         return 0, None, "网络错误：" + str(e)
 
@@ -491,68 +315,25 @@ def supabase_update_note(entry_id, note):
     return True, None
 
 
-def supabase_get_ai_settings():
-    """Read the user's AI config (provider/key/model) saved by the web app. RLS-protected."""
+def supabase_insert_entry_note(content):
+    """把一条碎碎念写进 entries（笔记灵感库）→ 网页笔记里能看到；source 标记为 desktop。"""
     token, user_id = _ensure_token()
     if not token or not user_id:
-        return None, "未登录"
+        return False, "未登录"
     status, data, err = _api(
-        "GET",
-        "/rest/v1/ai_settings",
+        "POST",
+        "/rest/v1/entries",
         headers={"Authorization": "Bearer " + token},
-        query={"user_id": "eq." + str(user_id), "select": "provider,api_key,api_base,model"},
+        payload={
+            "user_id": user_id,
+            "type": "text",
+            "content": content,
+            "source": "desktop",
+        },
     )
     if err:
-        return None, err
-    row = (data[0] if isinstance(data, list) and data else None)
-    if not row or not row.get("api_key"):
-        return None, "未配置"
-    return row, None
-
-
-def llm_chat(cfg, messages, system_prompt, max_tokens=800):
-    """Call the configured LLM with a list of {role,content}. Returns (reply_text|None, err|None)."""
-    provider = (cfg.get("provider") or "deepseek").lower()
-    api_key = cfg.get("api_key")
-    base_default, model_default = AI_PROVIDERS.get(provider, AI_PROVIDERS["deepseek"])
-    api_base = (cfg.get("api_base") or base_default).rstrip("/")
-    model = cfg.get("model") or model_default
-    if not model:
-        return None, "未设置模型名称（请在网页 AI 设置里填写 model）"
-
-    if provider == "anthropic":
-        url = api_base + "/v1/messages"
-        headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
-        payload = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "system": system_prompt,
-            "messages": messages,
-            "temperature": 0.7,
-        }
-        status, data, err = _http_post_json(url, headers, payload)
-        if err:
-            return None, err
-        try:
-            return (data["content"][0]["text"] or "").strip(), None
-        except Exception:
-            return None, "无法解析模型返回"
-
-    # OpenAI-compatible (deepseek / qwen / glm / doubao / openai)
-    url = api_base + "/chat/completions"
-    headers = {"Authorization": "Bearer " + api_key}
-    payload = {
-        "model": model,
-        "messages": [{"role": "system", "content": system_prompt}] + messages,
-        "temperature": 0.7,
-    }
-    status, data, err = _http_post_json(url, headers, payload)
-    if err:
-        return None, err
-    try:
-        return (data["choices"][0]["message"]["content"] or "").strip(), None
-    except Exception:
-        return None, "无法解析模型返回"
+        return False, err
+    return True, None
 
 # ── Main companion class ──────────────────────────────
 
@@ -678,18 +459,10 @@ class Companion:
         self.panel = None
         self.login_win = None
         self.finish_win = None
+        self.quicknote_win = None
+        self._qn_text = None
+        self.avatar_win = None
         self.p_widgets = {}
-
-        # ── Chat state (lazy-loaded from disk on first open) ──
-        self.chat_win = None
-        self.chat_log = None
-        self.chat_entry = None
-        self.chat_loaded = False
-        self.chat_messages = []
-        self.chat_facts = []
-        self.chat_summarized_upto = 0
-        self.chat_sending = False
-        self._chat_pending = ""
 
         # ── Apply initial mode ─────────────────────────
         self.apply_config()
@@ -967,7 +740,7 @@ class Companion:
     def on_right_click(self, event):
         # Plain text labels (no emoji) so every item shares one left edge.
         menu = tk.Menu(self.root, tearoff=0, font=(YH, 10))
-        menu.add_command(label="和我聊天", command=self.open_chat)
+        menu.add_command(label="记点碎碎念", command=self.open_quicknote)
         menu.add_command(label="开始专注", command=self.open_panel)
         menu.add_separator()
         menu.add_command(label="换形象…", command=self.change_avatar)
@@ -1006,9 +779,69 @@ class Companion:
         except Exception:
             pass
 
-    # ── Change avatar (local picker) ──────────────────
+    # ── Change avatar (emoji preset or local image) ──
 
     def change_avatar(self):
+        """换形象唯一入口：Emoji 预设网格 + 选本地图片/GIF，即点即换、无需登录。"""
+        if self.avatar_win is not None and self.avatar_win.winfo_exists():
+            self.avatar_win.lift()
+            return
+        win = tk.Toplevel(self.root)
+        self.avatar_win = win
+        win.title("换形象")
+        win.wm_attributes("-topmost", True)
+        win.resizable(False, False)
+        win.configure(bg="#ffffff")
+        px = max(10, self.root.winfo_x() - 110)
+        py = max(10, self.root.winfo_y() - 180)
+        win.geometry(f"320x300+{px}+{py}")
+
+        def close_av():
+            win.destroy()
+            self.avatar_win = None
+
+        win.protocol("WM_DELETE_WINDOW", close_av)
+
+        body = tk.Frame(win, bg="#ffffff")
+        body.pack(fill=tk.BOTH, expand=True, padx=14, pady=12)
+
+        tk.Label(body, text="🎨 选个形象", bg="#ffffff", fg="#1565c0",
+                 font=(YH, 12, "bold")).pack(anchor="w")
+        tk.Label(body, text="点一下即换 · 也可以选自己的图片/GIF", bg="#ffffff",
+                 fg="#90a4ae", font=(YH, 8)).pack(anchor="w", pady=(2, 8))
+
+        grid = tk.Frame(body, bg="#ffffff")
+        grid.pack(fill=tk.X)
+        cur_id = self.config.get("character_id")
+        for i, (cid, emoji, name) in enumerate(AVATAR_PRESETS):
+            selected = (self.config.get("mode") == "emoji" and cid == cur_id)
+            cell = tk.Button(
+                grid, text=emoji, font=("Segoe UI Emoji", 22),
+                bg="#e3f2fd" if selected else "#f5f9ff",
+                activebackground="#bbdefb", relief=tk.FLAT, cursor="hand2",
+                width=2, command=lambda c=cid, e=emoji: self._pick_emoji(c, e, close_av),
+            )
+            cell.grid(row=i // 3, column=i % 3, padx=4, pady=4, sticky="nsew")
+        for c in range(3):
+            grid.columnconfigure(c, weight=1)
+
+        tk.Button(
+            body, text="📁 选本地图片 / GIF…", font=(YH, 9),
+            bg="#42a5f5", fg="#ffffff", relief=tk.FLAT, cursor="hand2",
+            command=lambda: self._pick_image_file(close_av),
+        ).pack(fill=tk.X, pady=(10, 0))
+
+    def _pick_emoji(self, cid, emoji, close):
+        self.config["mode"] = "emoji"
+        self.config["character"] = emoji
+        self.config["character_id"] = cid
+        self.config["image_path"] = ""
+        self.save_config()
+        self.apply_config()
+        close()
+        self._flash_bubble("换好啦～ ✨")
+
+    def _pick_image_file(self, close):
         path = filedialog.askopenfilename(
             title="选择图片或 GIF",
             filetypes=[("图片/动图", "*.png *.jpg *.jpeg *.gif"), ("所有文件", "*.*")],
@@ -1029,6 +862,7 @@ class Companion:
         self.config["image_path"] = dest
         self.save_config()
         self.apply_config()
+        close()
         self._flash_bubble("换好啦～ ✨")
 
     # ── Rename ────────────────────────────────────────
@@ -1122,13 +956,6 @@ class Companion:
     def logout(self):
         clear_auth()
         self._flash_bubble("已退出登录")
-
-    # ── Chat with the LLM (with persistent memory) ────
-
-    def _ensure_chat_loaded(self):
-        if not self.chat_loaded:
-            self.chat_messages, self.chat_facts, self.chat_summarized_upto = load_chat()
-            self.chat_loaded = True
 
     def _win32_foreground(self, win, add_appwindow=False):
         """Seize OS keyboard focus on Windows for an overrideredirect popup.
@@ -1267,238 +1094,6 @@ class Companion:
         win.after(250, go)
         win.after(500, go)
 
-    def open_chat(self):
-        """In-app chat window (tkinter). Reuses the model/key configured in the web
-        设置→AI 智能设置 and remembers facts across restarts (mem0-style)."""
-        self._ensure_chat_loaded()
-        if self.chat_win is not None and self.chat_win.winfo_exists():
-            self.chat_win.lift()
-            self._grab_keyboard(self.chat_win, self.chat_entry, add_appwindow=True)
-            return
-
-        nick = self._nickname()
-        win = tk.Toplevel(self.root)
-        self.chat_win = win
-        win.title("和" + nick + "聊天")
-        win.configure(bg="#ffffff")
-        win.wm_attributes("-topmost", True)
-        win.minsize(320, 380)
-        try:
-            win.geometry("380x500+%d+%d" % (self.root.winfo_x() - 220, self.root.winfo_y() - 320))
-        except Exception:
-            pass
-        win.protocol("WM_DELETE_WINDOW", self._chat_close)
-
-        # Header
-        header = tk.Frame(win, bg="#42a5f5")
-        header.pack(fill=tk.X)
-        tk.Label(header, text="和" + nick + "聊天", bg="#42a5f5", fg="#ffffff",
-                 font=(YH, 11, "bold")).pack(side=tk.LEFT, padx=10, pady=6)
-        tk.Label(header, text="清空记忆", bg="#42a5f5", fg="#e3f2fd", font=(YH, 8),
-                 cursor="hand2").pack(side=tk.RIGHT, padx=10, pady=6)
-        tk.Label(header, text="记得的事", bg="#42a5f5", fg="#e3f2fd", font=(YH, 8),
-                 cursor="hand2").pack(side=tk.RIGHT, padx=2, pady=6)
-        for w in header.winfo_children():
-            if w.cget("text") == "清空记忆":
-                w.bind("<Button-1>", lambda e: self._chat_clear())
-            elif w.cget("text") == "记得的事":
-                w.bind("<Button-1>", lambda e: self._chat_show_memory())
-
-        # Transcript area
-        body = tk.Frame(win, bg="#ffffff")
-        body.pack(fill=tk.BOTH, expand=True, padx=10, pady=(8, 0))
-        scroll = tk.Scrollbar(body)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        log = tk.Text(body, wrap="word", font=(YH, 10), bg="#f7fbff", fg="#1a3a5c",
-                      relief=tk.FLAT, padx=8, pady=6, yscrollcommand=scroll.set,
-                      highlightthickness=1, highlightbackground="#e3f2fd")
-        log.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scroll.config(command=log.yview)
-        log.tag_configure("who_me", foreground="#1e88e5", font=(YH, 9, "bold"))
-        log.tag_configure("who_bot", foreground="#43a047", font=(YH, 9, "bold"))
-        log.tag_configure("msg", spacing3=6)
-        log.tag_configure("hint", foreground="#90a4ae")
-        log.tag_configure("pending", foreground="#b0bec5")
-        self.chat_log = log
-
-        # Input row
-        inp = tk.Frame(win, bg="#ffffff")
-        inp.pack(fill=tk.X, padx=10, pady=10)
-        entry = tk.Entry(inp, font=(YH, 10))
-        entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3)
-        entry.bind("<Return>", self._chat_send)
-        entry.bind("<Button-1>", lambda e: (self._win32_foreground(win), entry.focus_set()))
-        self.chat_entry = entry
-        tk.Button(inp, text="发送", font=(YH, 9), bg="#42a5f5", fg="#ffffff", relief=tk.FLAT,
-                  width=6, cursor="hand2", command=self._chat_send).pack(side=tk.LEFT, padx=(8, 0))
-
-        self._chat_pending = ""
-        self._chat_render()
-        self._grab_keyboard(win, entry, add_appwindow=True)
-
-    def _chat_close(self):
-        if self.chat_win is not None and self.chat_win.winfo_exists():
-            self.chat_win.destroy()
-        self.chat_win = None
-        self.chat_log = None
-        self.chat_entry = None
-
-    def _chat_clear(self):
-        if not messagebox.askyesno("清空记忆", "确定要清空全部聊天记录和记忆吗？这无法恢复。"):
-            return
-        self.chat_messages = []
-        self.chat_facts = []
-        self.chat_summarized_upto = 0
-        save_chat(self.chat_messages, self.chat_facts, self.chat_summarized_upto)
-        self._chat_pending = ""
-        self._chat_render()
-
-    def _chat_show_memory(self):
-        """Read-only view of the mem0-style fact store (newest first)."""
-        facts = [f.get("text") for f in self.chat_facts if isinstance(f, dict) and f.get("text")]
-        facts = facts[::-1]
-        if not facts:
-            messagebox.showinfo("记得的事", "我还没记住什么呢～多聊几句，我会慢慢记住关于你的事 💙")
-            return
-        body = "\n".join("· " + t for t in facts[:60])
-        if len(facts) > 60:
-            body += "\n…（共 %d 条，仅显示最近 60 条）" % len(facts)
-        messagebox.showinfo("记得的事（%d 条）" % len(facts), body)
-
-    def _chat_system_prompt(self, query=""):
-        nick = self._nickname()
-        base = (
-            "你是「%s」，用户桌面上的一个温暖、可爱、懂陪伴的小伙伴。"
-            "说话亲切自然、口语化，像熟悉的朋友一样关心 ta，可以适当用 emoji。"
-            "回答尽量简短（通常 1-3 句），除非用户明确要求展开。"
-        ) % nick
-        relevant = retrieve_facts(self.chat_facts, query)
-        if relevant:
-            base += (
-                "\n\n【你已经记住的关于 ta 的事】（自然地运用，别生硬复述）：\n"
-                + "\n".join("- " + t for t in relevant)
-            )
-        return base
-
-    def _chat_render(self):
-        t = self.chat_log
-        if t is None or not t.winfo_exists():
-            return
-        nick = self._nickname()
-        t.configure(state="normal")
-        t.delete("1.0", "end")
-        if not self.chat_messages:
-            t.insert("end", "来和我说点什么吧～我会记住我们聊过的内容 💙\n\n", ("hint",))
-        for m in self.chat_messages:
-            if m.get("role") == "user":
-                t.insert("end", "你\n", ("who_me",))
-                t.insert("end", (m.get("content") or "") + "\n\n", ("msg",))
-            else:
-                t.insert("end", nick + "\n", ("who_bot",))
-                t.insert("end", (m.get("content") or "") + "\n\n", ("msg",))
-        if self._chat_pending:
-            t.insert("end", nick + "\n", ("who_bot",))
-            t.insert("end", self._chat_pending + "\n\n", ("pending",))
-        t.configure(state="disabled")
-        t.see("end")
-
-    def _chat_set_pending(self, text):
-        self._chat_pending = text
-        self._chat_render()
-
-    def _chat_error_hint(self, msg):
-        if msg == "未登录":
-            return "请先右键登录，再来聊天哦"
-        if msg == "未配置":
-            return "还没配置模型，请到网页「设置 → AI 智能设置」填好模型和 API Key"
-        return msg
-
-    def _chat_send(self, event=None):
-        if self.chat_win is None or not self.chat_win.winfo_exists() or self.chat_sending:
-            return
-        text = self.chat_entry.get().strip()
-        if not text:
-            return
-        self.chat_entry.delete(0, "end")
-        self.chat_messages.append({"role": "user", "content": text})
-        save_chat(self.chat_messages, self.chat_facts, self.chat_summarized_upto)
-        self.chat_sending = True
-        self._chat_set_pending("正在输入…")
-
-        req_msgs = [{"role": m["role"], "content": m["content"]} for m in self.chat_messages[-24:]]
-        sys_prompt = self._chat_system_prompt(text)
-
-        def work():
-            cfg, err = supabase_get_ai_settings()
-            if err:
-                return ("err", err)
-            reply, e2 = llm_chat(cfg, req_msgs, sys_prompt)
-            if e2:
-                return ("err", e2)
-            return ("ok", reply)
-
-        def done(res):
-            self.chat_sending = False
-            ok = isinstance(res, tuple) and len(res) >= 2 and res[0] == "ok"
-            if not ok:
-                msg = res[-1] if isinstance(res, tuple) else "出错了"
-                self._chat_set_pending("⚠ " + self._chat_error_hint(str(msg)))
-                return
-            reply = (res[1] or "").strip() or "（没有内容）"
-            self._chat_pending = ""
-            self.chat_messages.append({"role": "assistant", "content": reply})
-            save_chat(self.chat_messages, self.chat_facts, self.chat_summarized_upto)
-            self._chat_render()
-            self._chat_maybe_extract()
-
-        self.run_async(work, done)
-
-    def _chat_maybe_extract(self):
-        """mem0-style 'add': extract discrete facts about the user from the latest
-        turns and merge them into the local fact store, so memory accumulates over
-        time without re-processing or losing earlier history."""
-        start = self.chat_summarized_upto
-        new = self.chat_messages[start:]
-        if len(new) < 4:  # wait for a couple of exchanges before spending an LLM call
-            return
-        transcript = "\n".join(
-            ("用户：" if m.get("role") == "user" else "我：") + (m.get("content") or "")
-            for m in new
-        )
-        existing = [f.get("text") for f in self.chat_facts if isinstance(f, dict) and f.get("text")][-60:]
-        new_upto = len(self.chat_messages)
-
-        def work():
-            cfg, err = supabase_get_ai_settings()
-            if err:
-                return ("err", err)
-            user_p = (
-                FACT_EXTRACTION_INSTRUCTION
-                + "\n\n【已有记忆】\n" + ("\n".join("- " + t for t in existing) or "（暂无）")
-                + "\n\n【新对话】\n" + transcript
-            )
-            reply, e2 = llm_chat(
-                cfg,
-                [{"role": "user", "content": user_p}],
-                "你是负责抽取用户长期记忆的助手，严格只输出 JSON 数组。",
-                max_tokens=500,
-            )
-            if e2:
-                return ("err", e2)
-            return ("ok", reply)
-
-        def done(res):
-            ok = isinstance(res, tuple) and len(res) >= 2 and res[0] == "ok"
-            if not ok:
-                return  # best-effort; cursor not advanced so we retry next time
-            new_texts = _parse_fact_list(res[1])
-            self.chat_summarized_upto = new_upto
-            if new_texts:
-                self.chat_facts = merge_facts(self.chat_facts, new_texts)
-            save_chat(self.chat_messages, self.chat_facts, self.chat_summarized_upto)
-
-        self.run_async(work, done)
-
     # ── Timer core ────────────────────────────────────
 
     def elapsed(self):
@@ -1619,30 +1214,21 @@ class Companion:
             return
         p = tk.Toplevel(self.root)
         self.panel = p
-        p.overrideredirect(True)
+        # 用带标题栏的普通窗口（非 overrideredirect）：Win11 只允许这种窗口成为前台/活动窗口，
+        # 输入框才能稳定接收键盘；overrideredirect 窗口像气泡提示，永远拿不到键盘焦点。
+        p.title("⏱ 专注计时")
         p.wm_attributes("-topmost", True)
+        p.resizable(False, False)
         p.configure(bg="#ffffff")
+        p.protocol("WM_DELETE_WINDOW", self.close_panel)
         px = self.root.winfo_x() - 80
         py = self.root.winfo_y() - 320
         px = max(10, px)
         py = max(10, py)
         p.geometry(f"270x380+{px}+{py}")
 
-        wrap = tk.Frame(p, bg="#ffffff", highlightbackground="#42a5f5", highlightthickness=1)
+        wrap = tk.Frame(p, bg="#ffffff")
         wrap.pack(fill=tk.BOTH, expand=True)
-
-        # Header (draggable + close)
-        header = tk.Frame(wrap, bg="#42a5f5")
-        header.pack(fill=tk.X)
-        htitle = tk.Label(header, text="⏱ 专注计时", bg="#42a5f5", fg="#ffffff", font=(YH, 11, "bold"))
-        htitle.pack(side=tk.LEFT, padx=10, pady=6)
-        closebtn = tk.Label(header, text="✕", bg="#42a5f5", fg="#ffffff",
-                            font=(YH, 11), cursor="hand2")
-        closebtn.pack(side=tk.RIGHT, padx=10, pady=6)
-        closebtn.bind("<Button-1>", lambda e: self.close_panel())
-        for w in (header, htitle):
-            w.bind("<Button-1>", self._panel_press)
-            w.bind("<B1-Motion>", self._panel_motion)
 
         body = tk.Frame(wrap, bg="#ffffff")
         body.pack(fill=tk.BOTH, expand=True, padx=14, pady=10)
@@ -1714,19 +1300,8 @@ class Companion:
         self.p_widgets["account"] = p_account
 
         self.refresh_panel()
-
-    def _panel_press(self, event):
-        self._p_px = event.x_root
-        self._p_py = event.y_root
-        self._p_wx = self.panel.winfo_x()
-        self._p_wy = self.panel.winfo_y()
-
-    def _panel_motion(self, event):
-        if self.panel is None or not self.panel.winfo_exists():
-            return
-        dx = event.x_root - self._p_px
-        dy = event.y_root - self._p_py
-        self.panel.geometry(f"+{self._p_wx + dx}+{self._p_wy + dy}")
+        # 抢占系统键盘焦点并落到任务输入框，确保打开即可输入。
+        self._grab_keyboard(p, self.p_widgets.get("entry"), add_appwindow=True)
 
     def _set_status(self, text):
         w = self.p_widgets.get("status")
@@ -1785,8 +1360,10 @@ class Companion:
             self.finish_win.destroy()
         win = tk.Toplevel(self.root)
         self.finish_win = win
-        win.overrideredirect(True)
+        # 同专注面板：用带标题栏的普通窗口，复盘输入框才能正常打字。
+        win.title("复盘 · 记录收获")
         win.wm_attributes("-topmost", True)
+        win.resizable(False, False)
         win.configure(bg="#ffffff")
         px = max(10, self.root.winfo_x() - 80)
         py = max(10, self.root.winfo_y() - 280)
@@ -1841,12 +1418,101 @@ class Companion:
             win.destroy()
             self.finish_win = None
 
+        win.protocol("WM_DELETE_WINDOW", skip)
+
         savebtn = tk.Button(btn_row, text="保存收获", font=(YH, 9), bg="#66bb6a", fg="#ffffff",
                             relief=tk.FLAT, cursor="hand2", command=save_reflection)
         savebtn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
         tk.Button(btn_row, text="完成", font=(YH, 9), bg="#eceff1", fg="#607d8b",
                   relief=tk.FLAT, cursor="hand2", command=skip).pack(
             side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+
+    # ── Quick note / 碎碎念 window ─────────────────────
+
+    def open_quicknote(self):
+        """随手记一句想法，回车即写进网页笔记库（entries, source=desktop）。"""
+        if self.quicknote_win is not None and self.quicknote_win.winfo_exists():
+            self.quicknote_win.lift()
+            self._grab_keyboard(self.quicknote_win, self._qn_text, add_appwindow=True)
+            return
+        # 带标题栏的普通窗口，输入框才能稳定打字（同专注/复盘窗）。
+        win = tk.Toplevel(self.root)
+        self.quicknote_win = win
+        win.title("碎碎念")
+        win.wm_attributes("-topmost", True)
+        win.resizable(False, False)
+        win.configure(bg="#ffffff")
+        px = max(10, self.root.winfo_x() - 90)
+        py = max(10, self.root.winfo_y() - 210)
+        win.geometry(f"300x230+{px}+{py}")
+
+        wrap = tk.Frame(win, bg="#ffffff", highlightbackground="#ffb74d", highlightthickness=2)
+        wrap.pack(fill=tk.BOTH, expand=True)
+        body = tk.Frame(wrap, bg="#ffffff")
+        body.pack(fill=tk.BOTH, expand=True, padx=14, pady=12)
+
+        tk.Label(body, text="💭 此刻在想什么", bg="#ffffff", fg="#e8920a",
+                 font=(YH, 12, "bold")).pack(anchor="w")
+        tk.Label(body, text="回车记下并同步到网页笔记 · Shift+回车换行", bg="#ffffff",
+                 fg="#b0875c", font=(YH, 8)).pack(anchor="w", pady=(2, 6))
+
+        txt = tk.Text(body, height=4, font=(YH, 10), wrap=tk.WORD,
+                      relief=tk.SOLID, bd=1, highlightthickness=0)
+        txt.pack(fill=tk.BOTH, expand=True)
+        self._qn_text = txt
+
+        status = tk.Label(body, text="", bg="#ffffff", fg="#90a4ae", font=(YH, 8),
+                          wraplength=260, justify=tk.LEFT, anchor="w")
+        status.pack(fill=tk.X, pady=(6, 0))
+
+        auth = load_auth()
+        if not (auth and auth.get("email")):
+            status.configure(text="未登录 · 右键我登录后碎碎念才会同步到网页")
+
+        def close_qn():
+            win.destroy()
+            self.quicknote_win = None
+
+        def do_save(event=None):
+            note = txt.get("1.0", tk.END).strip()
+            if not note:
+                return "break"
+            cur = load_auth()
+            if not (cur and cur.get("email")):
+                status.configure(text="请先右键我登录，再记碎碎念才能同步", fg="#e57373")
+                return "break"
+            status.configure(text="记录中…", fg="#90a4ae")
+            savebtn.configure(state="disabled")
+
+            def done(res):
+                ok, err = res
+                if not win.winfo_exists():
+                    return
+                if ok:
+                    close_qn()
+                    self._flash_bubble("碎碎念已记下 ✨")
+                else:
+                    status.configure(text="同步失败：" + (err or ""), fg="#e57373")
+                    savebtn.configure(state="normal")
+
+            self.run_async(lambda: supabase_insert_entry_note(note), done)
+            return "break"
+
+        win.protocol("WM_DELETE_WINDOW", close_qn)
+
+        btn_row = tk.Frame(body, bg="#ffffff")
+        btn_row.pack(fill=tk.X, pady=(8, 0))
+        savebtn = tk.Button(btn_row, text="记下并同步", font=(YH, 9), bg="#ffa726", fg="#ffffff",
+                            relief=tk.FLAT, cursor="hand2", command=do_save)
+        savebtn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+        tk.Button(btn_row, text="关闭", font=(YH, 9), bg="#eceff1", fg="#607d8b",
+                  relief=tk.FLAT, cursor="hand2", command=close_qn).pack(
+            side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+
+        # 回车=记下（阻止换行）；Shift+回车=换行（交给 Text 默认行为）。
+        txt.bind("<Return>", do_save)
+        txt.bind("<Shift-Return>", lambda e: None)
+        self._grab_keyboard(win, txt, add_appwindow=True)
 
     # ── Global tick (timer display + panel refresh + auto-finish) ──
 
