@@ -16,3 +16,12 @@ skills-lock.json
 # 桌面悬浮窗运行产物
 desktop/companion.pid
 desktop/__pycache__/
+desktop/selftest.txt
+
+# 本地凭证 / 个人数据（绝不入库）
+desktop/companion_auth.json
+desktop/companion_chat.json
+
+# PyInstaller 打包产物
+desktop/dist/
+desktop/build/

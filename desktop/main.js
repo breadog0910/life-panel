@@ -95,7 +95,7 @@ function createTray() {
   const ctxMenu = Menu.buildFromTemplate([
     {
       label: "🖥️ 打开网页面板",
-      click: () => shell.openExternal("https://life-panel-phi.vercel.app"),
+      click: () => shell.openExternal("https://breadog.top"),
     },
     { type: "separator" },
     {
@@ -131,7 +131,7 @@ ipcMain.handle("get-window-position", () => {
 });
 
 ipcMain.handle("open-web-panel", () => {
-  shell.openExternal("https://life-panel-phi.vercel.app");
+  shell.openExternal("https://breadog.top");
 });
 
 // ── Lifecycle ─────────────────────────────────────────

@@ -184,7 +184,7 @@ CREATE TABLE partner_config (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
   character_id TEXT DEFAULT 'cat_orange',
-  nickname TEXT DEFAULT '小橘',
+  nickname TEXT DEFAULT '小H',
   skin TEXT DEFAULT 'default',
   position_x INTEGER DEFAULT 100,
   position_y INTEGER DEFAULT 100,

@@ -22,6 +22,10 @@ import urllib.request
 import urllib.error
 import urllib.parse
 
+# 打包校验标记：每次构建前手动改这里，构建后用 `小H.exe --selftest` 写出此值，
+# 即可确认 dist 里的 exe 真的是最新源码（之前出现过 PyInstaller 缓存导致重打包是空操作）。
+BUILD_TAG = "2026-06-28-inapp-chat-focusfix-mutex"
+
 # ── Config ────────────────────────────────────────────
 # 默认网页面板地址；打包分发时可在 companion_config.json 用 "web_url" 覆盖为云端地址
 DEFAULT_WEB_PANEL_URL = "https://breadog.top"
@@ -556,12 +560,28 @@ class Companion:
     def __init__(self):
         self.config = load_config()
 
-        # Write PID so web panel can detect & control us
-        with open(PID_FILE, "w") as f:
-            f.write(str(os.getpid()))
+        # Write PID so web panel can detect & control us.
+        # Best-effort only: a locked/contended file (e.g. another instance starting
+        # at the same moment) must never crash the companion.
+        try:
+            with open(PID_FILE, "w") as f:
+                f.write(str(os.getpid()))
+        except Exception:
+            pass
 
         self.root = tk.Tk()
         self.root.title(self._nickname() + " · 桌面伙伴")
+
+        # ── Hidden anchor window ─────────────────────────
+        # Windows 10/11 deny SetForegroundWindow to any process whose ONLY
+        # windows are overrideredirect.  We create a tiny normal Toplevel
+        # (invisible but technically mapped) so the OS believes this process
+        # has a "real" window and allows keyboard focus on every popup.
+        self._anchor = tk.Toplevel(self.root)
+        self._anchor.geometry("1x1+-100+-100")
+        self._anchor.attributes("-alpha", 0.0)       # invisible
+        self._anchor.overrideredirect(False)
+        # ──────────────────────────────────────────────────
 
         # ── Window attributes ──────────────────────────
         self.root.overrideredirect(True)
@@ -1097,7 +1117,7 @@ class Companion:
                         relief=tk.FLAT, width=12, cursor="hand2", command=do_login)
         btn.pack(pady=6)
         pwd_e.bind("<Return>", lambda e: do_login())
-        self._grab_keyboard(win, email_e)
+        self._grab_keyboard(win, email_e, add_appwindow=True)
 
     def logout(self):
         clear_auth()
@@ -1110,34 +1130,151 @@ class Companion:
             self.chat_messages, self.chat_facts, self.chat_summarized_upto = load_chat()
             self.chat_loaded = True
 
-    def _grab_keyboard(self, win, widget):
+    def _win32_foreground(self, win, add_appwindow=False):
+        """Seize OS keyboard focus on Windows for an overrideredirect popup.
+
+        Win 10/11 deny SetForegroundWindow to a process whose only window is
+        overrideredirect (no taskbar entry → "never foreground"). Two things matter:
+
+        1.  Every Win32 call below MUST declare argtypes/restype. On 64-bit Python,
+            ctypes otherwise treats each HWND as a 32-bit int and truncates the real
+            64-bit window handle — so the call silently acts on a garbage handle and
+            fails. This (not the focus lock) is why earlier attempts never worked.
+        2.  AttachThreadInput to the foreground thread lets us legally call
+            SetForegroundWindow / SetActiveWindow / SetFocus.
+
+        add_appwindow gives the popup a taskbar presence (WS_EX_APPWINDOW) so the OS
+        treats it as a real, activatable application window.
+        """
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+
+            HWND = wintypes.HWND
+            # ── Declare signatures so 64-bit HWNDs aren't truncated to int ──
+            user32.GetAncestor.restype = HWND
+            user32.GetAncestor.argtypes = [HWND, wintypes.UINT]
+            user32.GetForegroundWindow.restype = HWND
+            user32.GetForegroundWindow.argtypes = []
+            user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+            user32.GetWindowThreadProcessId.argtypes = [HWND, ctypes.POINTER(wintypes.DWORD)]
+            user32.AttachThreadInput.restype = wintypes.BOOL
+            user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+            user32.BringWindowToTop.restype = wintypes.BOOL
+            user32.BringWindowToTop.argtypes = [HWND]
+            user32.SetForegroundWindow.restype = wintypes.BOOL
+            user32.SetForegroundWindow.argtypes = [HWND]
+            user32.SetActiveWindow.restype = HWND
+            user32.SetActiveWindow.argtypes = [HWND]
+            user32.SetFocus.restype = HWND
+            user32.SetFocus.argtypes = [HWND]
+            user32.SetWindowPos.restype = wintypes.BOOL
+            user32.SetWindowPos.argtypes = [HWND, HWND, ctypes.c_int, ctypes.c_int,
+                                            ctypes.c_int, ctypes.c_int, wintypes.UINT]
+            user32.AllowSetForegroundWindow.restype = wintypes.BOOL
+            user32.AllowSetForegroundWindow.argtypes = [wintypes.DWORD]
+            kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+            kernel32.GetCurrentThreadId.argtypes = []
+            # *Ptr variants exist only on 64-bit; fall back to the 32-bit names.
+            get_long = getattr(user32, "GetWindowLongPtrW", None) or user32.GetWindowLongW
+            set_long = getattr(user32, "SetWindowLongPtrW", None) or user32.SetWindowLongW
+            get_long.restype = ctypes.c_ssize_t
+            get_long.argtypes = [HWND, ctypes.c_int]
+            set_long.restype = ctypes.c_ssize_t
+            set_long.argtypes = [HWND, ctypes.c_int, ctypes.c_ssize_t]
+
+            win.update_idletasks()
+            GA_ROOT = 2
+            hwnd = user32.GetAncestor(win.winfo_id(), GA_ROOT) or win.winfo_id()
+
+            # ── 1. Taskbar presence → the OS sees a real, activatable window ──
+            if add_appwindow:
+                GWL_EXSTYLE = -20
+                WS_EX_APPWINDOW = 0x00040000
+                WS_EX_TOOLWINDOW = 0x00000080
+                try:
+                    old_ex = get_long(hwnd, GWL_EXSTYLE)
+                    new_ex = (old_ex & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW
+                    set_long(hwnd, GWL_EXSTYLE, new_ex)
+                except Exception:
+                    pass
+
+            # ── 2. Ask the system to lift the foreground lock ──
+            try:
+                user32.AllowSetForegroundWindow(0xFFFFFFFF)
+            except Exception:
+                pass
+
+            # ── 3. Attach to the foreground thread's input queue ──
+            fg = user32.GetForegroundWindow()
+            cur = kernel32.GetCurrentThreadId()
+            fg_thread = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+            attached = False
+            if fg_thread and fg_thread != cur:
+                attached = bool(user32.AttachThreadInput(fg_thread, cur, True))
+
+            # ── 4. Float to top, then relax topmost ──
+            HWND_TOPMOST = HWND(-1)
+            HWND_NOTOPMOST = HWND(-2)
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_SHOWWINDOW = 0x0040
+            flags = SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW
+            user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags)
+            user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+
+            # ── 5. Activate + focus ──
+            user32.BringWindowToTop(hwnd)
+            user32.SetForegroundWindow(hwnd)
+            user32.SetActiveWindow(hwnd)
+            user32.SetFocus(hwnd)
+
+            if attached:
+                user32.AttachThreadInput(fg_thread, cur, False)
+        except Exception:
+            pass
+
+    def _grab_keyboard(self, win, widget, add_appwindow=False):
         """Force OS-level keyboard focus onto a popup.
 
-        The main floating window is overrideredirect (borderless, no taskbar entry),
-        so on Windows its child Toplevels are not "activated" by the OS — clicking an
-        Entry gives it Tk-internal focus but typed keys still aren't routed to the
-        window. focus_force() activates the window and seizes the keyboard. We call it
-        immediately and again after the window is mapped to beat the timing race.
+        Win 10/11 deny SetForegroundWindow to a process spawned from an
+        overrideredirect root, so the first attempt can lose the race with the
+        window actually mapping. We retry a few times early (idle → 80 → 250 → 500)
+        and stop — running it later would yank focus away mid-typing. The first call
+        grants WS_EX_APPWINDOW so the popup is a "real" window in the OS's eyes.
         """
-        def go():
+        def go(aaw=False):
             if not win.winfo_exists():
                 return
             try:
+                win.deiconify()
                 win.lift()
+                win.update_idletasks()
+                self._win32_foreground(win, add_appwindow=aaw)
                 win.focus_force()
                 if widget is not None and widget.winfo_exists():
+                    widget.focus_set()
                     widget.focus_force()
             except Exception:
                 pass
-        go()
-        win.after(60, go)
-        win.after(200, go)
+        # First call: add APPWINDOW style so Windows knows this is a real window.
+        win.after_idle(lambda: go(add_appwindow))
+        win.after(80, go)
+        win.after(250, go)
+        win.after(500, go)
 
     def open_chat(self):
-        if self.chat_win is not None and self.chat_win.winfo_exists():
-            self._grab_keyboard(self.chat_win, self.chat_entry)
-            return
+        """In-app chat window (tkinter). Reuses the model/key configured in the web
+        设置→AI 智能设置 and remembers facts across restarts (mem0-style)."""
         self._ensure_chat_loaded()
+        if self.chat_win is not None and self.chat_win.winfo_exists():
+            self.chat_win.lift()
+            self._grab_keyboard(self.chat_win, self.chat_entry, add_appwindow=True)
+            return
 
         nick = self._nickname()
         win = tk.Toplevel(self.root)
@@ -1190,13 +1327,14 @@ class Companion:
         entry = tk.Entry(inp, font=(YH, 10))
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3)
         entry.bind("<Return>", self._chat_send)
+        entry.bind("<Button-1>", lambda e: (self._win32_foreground(win), entry.focus_set()))
         self.chat_entry = entry
         tk.Button(inp, text="发送", font=(YH, 9), bg="#42a5f5", fg="#ffffff", relief=tk.FLAT,
                   width=6, cursor="hand2", command=self._chat_send).pack(side=tk.LEFT, padx=(8, 0))
 
         self._chat_pending = ""
         self._chat_render()
-        self._grab_keyboard(win, entry)
+        self._grab_keyboard(win, entry, add_appwindow=True)
 
     def _chat_close(self):
         if self.chat_win is not None and self.chat_win.winfo_exists():
@@ -1669,7 +1807,7 @@ class Companion:
         txt = tk.Text(body, height=5, font=(YH, 10), wrap=tk.WORD,
                       relief=tk.SOLID, bd=1, highlightthickness=0)
         txt.pack(fill=tk.BOTH, expand=True, pady=(4, 8))
-        self._grab_keyboard(win, txt)
+        self._grab_keyboard(win, txt, add_appwindow=True)
 
         status = tk.Label(body, text="", bg="#ffffff", fg="#90a4ae", font=(YH, 8))
         status.pack(anchor="w")
@@ -1815,22 +1953,77 @@ def _pid_is_companion(pid):
         return False
 
 
+# Kept alive for the whole process so the OS doesn't release our claim early.
+_SINGLE_INSTANCE_MUTEX = None
+
+
+def _acquire_single_instance():
+    """Claim 'only one companion' via a named Windows mutex, then sys.exit(0)
+    if another instance already holds it.
+
+    A kernel mutex is the reliable guard the PID file never was: it's claimed
+    atomically by exactly one process — no %APPDATA% write to fail (the source
+    of the PermissionError crash), and no check-then-write window for two
+    near-simultaneous launches to both slip through (which spawned a second
+    floating window). Returns the handle on success, or None when unavailable
+    (non-Windows / ctypes failure) so the caller can fall back to the PID file.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.CreateMutexW.restype = wintypes.HANDLE
+        kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+        ERROR_ALREADY_EXISTS = 183
+        # No namespace prefix → per-login-session, exactly one floating window per desktop.
+        handle = kernel32.CreateMutexW(None, False, "XiaoH_Companion_SingleInstance")
+        if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            sys.exit(0)
+        return handle
+    except Exception:
+        return None
+
+
 if __name__ == "__main__":
-    # ── Single instance check (robust against PID recycling) ──
-    if os.path.exists(PID_FILE):
-        running = False
+    import multiprocessing
+    multiprocessing.freeze_support()
+
+    # ── Build verification ──
+    # `小H.exe --selftest` writes BUILD_TAG next to the exe so a rebuild can be
+    # *verified* to contain the latest source, not just assumed (PyInstaller's
+    # cache has silently produced no-op rebuilds before).
+    if "--selftest" in sys.argv:
+        try:
+            with open(os.path.join(BASE_DIR, "selftest.txt"), "w", encoding="utf-8") as f:
+                f.write(BUILD_TAG + "\n")
+        except Exception:
+            pass
+        sys.exit(0)
+
+    # ── Single instance ──
+    # Primary guard: a named kernel mutex (atomic; survives an unwritable PID file).
+    _SINGLE_INSTANCE_MUTEX = _acquire_single_instance()  # exits here if 2nd instance
+
+    # Fallback only when the mutex is unavailable: legacy PID-file check.
+    if _SINGLE_INSTANCE_MUTEX is None and os.path.exists(PID_FILE):
         try:
             with open(PID_FILE) as f:
                 old_pid = int(f.read().strip())
-            running = old_pid != os.getpid() and _pid_is_companion(old_pid)
+            if old_pid != os.getpid() and _pid_is_companion(old_pid):
+                print(f"Companion already running (PID {old_pid})")
+                sys.exit(0)
         except Exception:
-            running = False
-        if running:
-            print(f"Companion already running (PID {old_pid})")
-            sys.exit(0)
-        # Stale PID — remove and continue
+            pass
+
+    # Clear any stale PID; Companion.__init__ rewrites a fresh one (best-effort)
+    # so the web panel can still detect / stop us.
+    if os.path.exists(PID_FILE):
         try:
             os.remove(PID_FILE)
         except Exception:
             pass
+
     Companion()

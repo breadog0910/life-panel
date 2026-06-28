@@ -840,3 +840,54 @@
 |------|------|
 | `desktop/companion.py` | 记忆库改为 mem0 式 add+search；事实抽取/检索/去重/迁移/「记得的事」查看器 |
 | `public/download/xiaoh.exe` | 更新打包产物（含 mem0 式记忆，29.8MB） |
+
+---
+
+### 2026-06-27 #34 — 悬浮窗三连修：打字焦点 / 启动崩溃 / 双窗口
+
+**用户报的三个问题：**
+1. 「还是打不了字」——聊天/登录/复盘窗口点了输入框仍无法输入。
+2. 启动崩溃：`PermissionError: [Errno 13] ... '%APPDATA%\小H\companion.pid'`（写 PID 文件时直接挂掉）。
+3. 单次启动竟弹出**两个**悬浮窗。
+
+**根因串联：** 三个问题其实同源于「单实例守卫不可靠」。守卫此前依赖 `companion.pid` 文件——
+- 它需要 `%APPDATA%\小H\companion.pid` **可写**，写失败就崩（问题 2）；
+- 「先检查后写入」之间有时间窗，两次几乎同时的启动会双双通过检查 → 开出第二个窗口（问题 3）；
+- 两个实例同时抢同一个 pid 文件，正是 `PermissionError`（文件被占用）的来源。
+
+**改动（`desktop/companion.py`）：**
+- **键盘焦点（问题 1）**：新增 `_win32_foreground(win)`，用 Win32 `AttachThreadInput`（把本线程输入队列附到当前前台线程，解除前台锁）+ `BringWindowToTop` + `SetForegroundWindow` + `SetActiveWindow` + `SetFocus` 强夺系统级前台；目标用 `GetAncestor(GA_ROOT)` 取顶层可激活窗口。`_grab_keyboard` 改为 `deiconify→lift→_win32_foreground→focus_force→focus_set`，并在 立即/`after(60)`/`after(200)`/`after(450)` 各跑一次；聊天输入框加 `<Button-1>` 点击重夺焦点。
+- **启动崩溃（问题 2）**：`Companion.__init__` 写 PID 包 `try/except`——PID 仅供网页端探测/控制，写不进绝不能让伙伴崩。
+- **双窗口（问题 3）**：单实例守卫改为 **Windows 命名内核互斥量**（`CreateMutexW` + `GetLastError()==ERROR_ALREADY_EXISTS(183)`）。互斥量由系统原子地只发给一个进程，不写磁盘、无"检查→写入"竞争窗，无论双击几次/谁启动都只活一个悬浮窗。PID 文件保留用于网页端启停探测（best-effort），并作为互斥量不可用时的兜底。
+
+**验证：** `py_compile` exit=0；**清空 build/dist 后全新重打包** `小H.exe`（29,810,032 字节，22:29，与上版 29,812,051 字节不同→确为含新代码的全新构建）并同步到 `public/download/xiaoh.exe`。打字是否生效、是否只剩一个窗口需用户在本机单次启动交互确认。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | 新增 `_win32_foreground` 强夺前台；PID 写入 crash-safe；单实例守卫改为命名互斥量（PID 兜底） |
+| `public/download/xiaoh.exe` | 更新打包产物（含三连修，29.8MB） |
+
+---
+
+### 2026-06-28 #35 — 打字焦点真正修复 + 聊天窗回退本地 + 可验证打包
+
+**背景纠偏：** #34 自认为"焦点已修、互斥量已进 exe"，但用户实测：双击 `desktop/dist` 里的 exe，点「和我聊天」弹出的仍是**本地小窗口**——而当时源码的 `open_chat` 已经改成跳浏览器。两者矛盾说明 **#34 那几次"重打包"其实是空操作**：PyInstaller 缓存命中，exe 根本没含新代码。这也解释了"为什么前面怎么改都没用"——所有修复从未进过实际运行的 exe。
+
+**两条主线：**
+1. **让打包真正生效且可验证。** 加 `BUILD_TAG` 常量 + `--selftest` 入口：`小H.exe --selftest` 会把 `BUILD_TAG` 写到 exe 同目录的 `selftest.txt`。每次用 `--clean` 全新打包后，跑一次 `--selftest` 读文件比对，**用可执行结果证明 exe 确含最新源码**，不再靠"体积/时间戳变了"猜。
+2. **聊天窗回退到本地 tkinter（去掉浏览器跳转）**，并修真正的焦点 bug。
+
+**焦点真凶（关键技术修复）：** `_win32_foreground` 里所有 Win32 调用都**没声明 `argtypes/restype`**。64 位 Python 下 ctypes 默认把每个 `HWND` 当 32 位 `int`，**把真实的 64 位窗口句柄截断**，于是 `SetForegroundWindow/SetFocus/SetWindowPos` 全作用在垃圾句柄上、静默失败——这才是"点了输入框打不了字"的根因，而不是前台锁本身。
+- 修法：为每个调用补全 `HWND=wintypes.HWND`（即 `c_void_p`）等签名；`GetWindowLongPtrW/SetWindowLongPtrW`（64 位指针宽度）带 `getattr` 兜底到 `*W`。
+- 去掉 `keybd_event(Alt)` 模拟（有副作用）；`_grab_keyboard` 的重夺收敛到 idle/80/250/500ms，**删掉 1200/2800ms**（晚期重夺会在用户打字时把焦点抢走）。
+
+**聊天窗：** `open_chat` 去掉 `webbrowser.open(...)` 跳转，恢复本地 tkinter 聊天窗；加"已开则 lift + 重夺焦点"短路，避免重复开窗。
+
+**验证：** `py_compile` exit=0；`--clean` 全新打包（`Building EXE because EXE-00.toc is non existent`，29,814,504 字节）；`小H.exe --selftest` 写出 `selftest.txt == 2026-06-28-inapp-chat-focusfix-mutex`（= BUILD_TAG，**确认 exe 为最新源码**）；已同步到 `public/download/xiaoh.exe`。打字能否输入、是否单窗，仍需用户本机单次启动交互确认。
+
+**修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `desktop/companion.py` | `BUILD_TAG` + `--selftest`；`_win32_foreground` 补全 ctypes 签名修句柄截断、去 Alt；`_grab_keyboard` 收敛重夺时机；`open_chat` 回退本地聊天窗 + 已开短路 |
+| `public/download/xiaoh.exe` | 重新打包同步（--clean 全新构建 + selftest 校验，29.8MB） |

@@ -1,9 +1,9 @@
 {
-  "mode": "image",
-  "character": "🐰",
-  "character_id": "rabbit",
-  "nickname": "小白",
-  "breathing_enabled": true,
+  "mode": "emoji",
+  "character": "🐧",
+  "character_id": "penguin",
+  "nickname": "豆豆",
+  "breathing_enabled": false,
   "bubble_enabled": true,
-  "image_path": "companion_image.png"
+  "image_path": ""
 }

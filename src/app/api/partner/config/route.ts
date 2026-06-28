@@ -8,7 +8,7 @@ const DEFAULTS = {
   mode: "emoji",
   character: "🐱",
   character_id: "cat",
-  nickname: "小橘",
+  nickname: "小H",
   breathing_enabled: true,
   bubble_enabled: true,
   image_path: "",

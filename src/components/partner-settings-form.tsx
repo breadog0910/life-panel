@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 // ── Character presets ────────────────────────────────
 
 const PRESETS = [
-  { id: "cat", emoji: "🐱", name: "小橘", label: "猫" },
+  { id: "cat", emoji: "🐱", name: "小H", label: "猫" },
   { id: "dog", emoji: "🐶", name: "旺财", label: "狗" },
   { id: "rabbit", emoji: "🐰", name: "小白", label: "兔" },
   { id: "panda", emoji: "🐼", name: "团团", label: "熊猫" },
@@ -34,7 +34,7 @@ const DEFAULTS: Settings = {
   mode: "emoji",
   character: "🐱",
   character_id: "cat",
-  nickname: "小橘",
+  nickname: "小H",
   breathing_enabled: true,
   bubble_enabled: true,
   image_path: "",
@@ -245,7 +245,7 @@ export default function PartnerSettingsForm() {
                 桌面悬浮窗
               </p>
               <p className="text-[10px] text-[#90a4ae]">
-                {companionRunning ? "🐱 小橘正在桌面上陪你" : "悬浮窗未启动"}
+                {companionRunning ? "🐱 小H正在桌面上陪你" : "悬浮窗未启动"}
               </p>
             </div>
           </div>
@@ -261,6 +261,30 @@ export default function PartnerSettingsForm() {
             {companionChecking ? "…" : companionRunning ? "关闭悬浮窗" : "启动悬浮窗"}
           </button>
         </div>
+      </div>
+
+      {/* ═══ Card: Download Desktop Companion ═══ */}
+      <div className="bg-white rounded-card border border-[#e3f2fd] p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-[#1a3a5c]">
+              💻 下载桌面悬浮伙伴
+            </p>
+            <p className="text-[11px] text-[#90a4ae] mt-1 leading-relaxed">
+              Windows 免安装单文件，下载后双击即用。桌面会出现悬浮窗：左键逗它说句话、右键「开始专注」计时，专注结束写一句复盘就会记进「计划中心」的日历。
+            </p>
+          </div>
+          <a
+            href="/download/xiaoh.exe"
+            download="小H桌面伙伴.exe"
+            className="shrink-0 px-4 py-2 rounded-full text-xs font-medium bg-[#42a5f5] text-white hover:bg-[#1e88e5] transition-all whitespace-nowrap"
+          >
+            ⬇ 下载 (.exe)
+          </a>
+        </div>
+        <p className="mt-3 text-[10px] text-[#b0bec5] leading-relaxed">
+          首次运行若弹出「Windows 已保护你的电脑」，点「更多信息 → 仍要运行」即可（未签名提示，文件本身安全）。登录后专注记录才会同步到日历。
+        </p>
       </div>
 
       {/* ═══ Card 1: Live Preview ═══ */}

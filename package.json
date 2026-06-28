@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "companion": "pythonw desktop/companion.py",
+    "companion:build": "python -m PyInstaller --noconfirm --distpath desktop/dist --workpath desktop/build desktop/companion.spec",
     "electron:dev": "concurrently -n next,electron -c blue,green \"next dev\" \"wait-on http://localhost:3000 && python desktop/companion.py\"",
     "electron": "python desktop/companion.py"
   },

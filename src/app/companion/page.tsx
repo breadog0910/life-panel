@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Play, Pause, RotateCcw, Send, Globe } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
+import CompanionChat from "@/components/companion-chat";
 
 declare global {
   interface Window {
@@ -27,7 +29,20 @@ const idlePhrases = [
   "有什么想说的吗？",
 ];
 
-export default function CompanionPage() {
+function CompanionContent() {
+  const searchParams = useSearchParams();
+  const tab = searchParams.get("tab");
+
+  // ── Chat tab: full-screen chat UI ──
+  if (tab === "chat") {
+    return <CompanionChat nickname="小H" />;
+  }
+
+  // ── Default: pomodoro + reflection panel ──
+  return <CompanionPanel />;
+}
+
+function CompanionPanel() {
   const { user } = useAuth();
   const [expanded, setExpanded] = useState(false);
   const [isElectron, setIsElectron] = useState(false);
@@ -112,7 +127,6 @@ export default function CompanionPage() {
   const handleCharacterClick = () => {
     if (!expanded) {
       setExpanded(true);
-      // Electron: resize window; Edge: just CSS transition
       window.electronAPI?.expandWindow();
     }
   };
@@ -120,7 +134,6 @@ export default function CompanionPage() {
   const handleCollapse = () => {
     setExpanded(false);
     window.electronAPI?.collapseWindow();
-    // Reset form state
     setContent("");
     setMood(null);
     setSubmitted(false);
@@ -131,7 +144,7 @@ export default function CompanionPage() {
     if (window.electronAPI) {
       window.electronAPI.openWebPanel();
     } else {
-      window.open("https://life-panel-phi.vercel.app", "_blank");
+      window.open("https://breadog.top", "_blank");
     }
   };
 
@@ -140,7 +153,6 @@ export default function CompanionPage() {
   const handleSubmit = async () => {
     if (!content.trim() || !user) return;
     setSaving(true);
-    // 同时写入 entries 表（笔记灵感库）和 reflections 表（兼容旧版）
     await Promise.all([
       supabase.from("entries").insert({
         user_id: user.id,
@@ -184,7 +196,7 @@ export default function CompanionPage() {
           <div className="text-6xl animate-breathe select-none drop-shadow-lg transition-transform group-hover:scale-110">
             🐱
           </div>
-          <span className="text-[10px] text-[#5c8dc9] mt-1 font-medium">小橘</span>
+          <span className="text-[10px] text-[#5c8dc9] mt-1 font-medium">小H</span>
           <span className="text-[9px] text-[#90a4ae] mt-0.5 opacity-60">点击打开面板</span>
         </div>
       )}
@@ -196,7 +208,7 @@ export default function CompanionPage() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#e3f2fd] shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-2xl">🐱</span>
-              <span className="font-semibold text-[#1565c0] text-sm">小橘</span>
+              <span className="font-semibold text-[#1565c0] text-sm">小H</span>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -313,5 +325,19 @@ export default function CompanionPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CompanionPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-32 text-[#90a4ae] text-sm">
+          加载中...
+        </div>
+      }
+    >
+      <CompanionContent />
+    </Suspense>
   );
 }

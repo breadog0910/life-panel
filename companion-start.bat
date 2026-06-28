@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-echo 🐱 启动小橘（桌面透明悬浮伙伴）...
+echo 🐱 启动小H（桌面透明悬浮伙伴）...
 echo.
 
 REM Check if dev server is already running
@@ -13,4 +13,4 @@ if errorlevel 1 (
 )
 
 pythonw "%~dp0desktop\companion.py"
-echo ✅ 小橘已退出
+echo ✅ 小H已退出
