@@ -1178,3 +1178,16 @@
 |------|------|
 | `src/app/api/morning/briefing/route.ts` | 修改：新增 `getTech`(it-news) / `getFinanceNews`(新浪滚动)，重排返回顺序 |
 | `src/components/morning-briefing.tsx` | 修改：新增科技/金融两块，板块重排 |
+
+---
+
+### 2026-06-28 #47 — 天气支持手动设置城市（修复 IP 定位到北京）
+
+**用户诉求：** "我不是北京的但天气显示是北京的"。原因：天气走 viki `/v2/weather` 的 IP 自动定位，部分用户 IP 被解析到北京。
+
+**改动（`src/components/greeting-bar.tsx`）：**
+- 表头天气区改为可点击：点击弹出城市输入框（Enter 保存 / Esc 取消），保存的城市写入 `localStorage["weather-city"]`。
+- 拉取逻辑 `loadWeather(city)`：有手动城市则按 `/v2/weather?query=城市` 查（实测 `?query=上海` 返回上海市），否则保持 `/v2/weather` 按真实 IP 自动定位。
+- 无城市且未定位到天气时显示「设置城市」按钮。
+
+**验证：** `tsc --noEmit` exit=0；viki `?query=上海` 实测 200（上海市 / 26° / 多云）。城市持久化到 localStorage，刷新后保持。
