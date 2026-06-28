@@ -1118,3 +1118,42 @@
 |------|------|
 | `src/components/lab/quiz-picker.tsx` | 新增：抽题组卷面板（勾选 + 随机抽取 → 自测 / 考试 / 组卷） |
 | `src/components/lab/quiz-tool.tsx` | 修改：加 `select` 阶段 + `openPicker`/`insertPaper`；ready 区与模拟卷卡加入口按钮 |
+
+---
+
+### 2026-06-28 #44 — 今日概览精简 + 晨间简报卡（今日大事 / 金融指数 / 微博热搜）
+
+**用户诉求：** ①今日日程只有"安排了日程规划"时才在今日概览显示；②今日概览去掉番茄钟和"今天学到了什么"；③给今日概览加一个每日晨间信息推送，能抓网上的今日大事/金融/新闻。
+
+**精简今日概览：**
+- `src/app/(main)/page.tsx` 移除 `PomodoroCard` 与 `QuickReflection`，改为单列堆叠。
+- `schedule-card.tsx`：`planned.length === 0`（含 loading）时整卡 `return null`，去掉"今天还没有安排～"空态——只有存在待完成日程规划才显示。
+
+**晨间简报（页面内拉取式，无需 cron/工作流）：** 经确认推送形式选「页面内晨间简报卡」，内容选 今日大事(60秒) / 金融指数 / 微博热搜，暂不加 AI 寄语。
+- 服务端路由 `src/app/api/morning/briefing/route.ts`（`revalidate=1800`）打开首页时由服务器并行拉取三源（`Promise.allSettled`，单源失败不影响整卡），各源 `fetch` 自带缓存，绕开浏览器跨域/防盗链：
+  - 今日大事 → `60s.viki.moe/v2/60s`（news[] + date/tip/lunar/weekday）
+  - 金融指数 → 新浪 `hq.sinajs.cn`（带 Referer，latin1 解析数字字段，名称本地硬编码，规避 GBK）：上证/深证/创业板，算涨跌幅
+  - 微博热搜 → `60s.viki.moe/v2/weibo`（取前 10）
+- 客户端卡 `src/components/morning-briefing.tsx`：渐变卡头（🌅 + 日期/星期/农历 + 刷新），当天首开自动展开、之后默认收起（localStorage 记当天已看），收起时露一句 tip 预览；金融指数涨红跌绿、今日大事可"查看全部 15 条"、热搜可点链接。
+
+**验证：** `tsc --noEmit` exit=0；`/` 返回 200；`/api/morning/briefing` 返回 200，实测 finance(3 指数含涨跌幅) / hot(10 条) / news(15 条) 均正常。三源均为第三方公开免费接口，已做单源失败兜底。
+
+**修改 / 新增文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/app/api/morning/briefing/route.ts` | 新增：晨间简报聚合 API（60秒 / 新浪行情 / 微博热搜 + 缓存 + 兜底） |
+| `src/components/morning-briefing.tsx` | 新增：晨间简报卡（可展开/收起 + 三块内容） |
+| `src/app/(main)/page.tsx` | 修改：移除番茄钟/快捷复盘，加入晨间简报卡 |
+| `src/components/schedule-card.tsx` | 修改：无待完成日程时不显示 |
+
+---
+
+### 2026-06-28 #45 — 晨间简报：金融指数 → GitHub 热门新仓库
+
+**用户诉求：** 金融指数先不要，换成 GitHub 最新热度仓库概览。
+
+**改动：**
+- `src/app/api/morning/briefing/route.ts`：移除 `getFinance`（新浪行情），新增 `getGithub`——用 GitHub 官方 Search API `api.github.com/search/repositories?q=created:>近7天&sort=stars&order=desc&per_page=8`（带 `User-Agent` + `Accept: application/vnd.github+json`），取近一周新建、star 最高的 8 个仓库（名称/star 数/语言/简介/链接）。`GET` 返回结构由 `{ sixty, finance, hot }` 改为 `{ sixty, github, hot }`。
+- `src/components/morning-briefing.tsx`：金融块替换为「GitHub 热门新仓库」块——序号（前 3 金色）+ 仓库名链接 + ⭐ star 数（`formatStars`，≥1000 显示 k），第二行显示语言（蓝）· 简介。类型 `Fin`→`Repo`、`Briefing.finance`→`github`、图标 `Github`（lucide-react 已不导出）→ `GitBranch`。
+
+**验证：** `tsc --noEmit` exit=0；`/api/morning/briefing` 返回 200，本机（国内网络）`github` 为 `null` 属正常——api.github.com 被墙；线上 Vercel（美国）可正常拉取。已做"拉不到则不显示该块"兜底。今日大事 / 微博热搜 仍正常。

@@ -66,6 +66,9 @@ export default function ScheduleCard() {
   const planned = items.filter(isPlanned);
   const done = items.filter(isDone);
 
+  // 只有安排了日程规划（存在待完成的计划）时才在今日概览显示
+  if (loading || planned.length === 0) return null;
+
   const colorMap = [
     "bg-[#e3f2fd] text-[#1565c0]",
     "bg-[#e8f5e9] text-[#2e7d32]",
@@ -86,74 +89,66 @@ export default function ScheduleCard() {
         </button>
       </div>
 
-      {loading ? (
-        <div className="text-center py-6 text-sm text-[#90a4ae]">加载中...</div>
-      ) : planned.length === 0 && done.length === 0 ? (
-        <div className="text-center py-6 text-sm text-[#90a4ae]">✨ 今天还没有安排～</div>
-      ) : (
-        <div className="space-y-3">
-          {/* 待完成的日程规划 */}
-          {planned.length > 0 && (
-            <div className="space-y-2">
-              {planned.map((item) => (
-                <div key={item.id} className="p-2.5 rounded-lg bg-[#fff8e1] border border-[#ffe0b2]">
-                  <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#ffe0b2] text-[#e65100] shrink-0">
-                      <Clock className="size-3" />
-                      {formatTime(item.created_at)}
-                    </span>
-                    <span className="text-sm text-[#1a3a5c] flex-1 truncate">{item.title}</span>
-                  </div>
-                  <div className="mt-2 flex items-center gap-1.5">
-                    <button
-                      onClick={() => goFocus(item)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-[#42a5f5] text-white hover:bg-[#1e88e5] transition-colors"
-                    >
-                      <Play className="size-3" /> 去专注
-                    </button>
-                    <button
-                      onClick={() => completePlan(item)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-[#66bb6a] text-white hover:bg-[#43a047] transition-colors"
-                    >
-                      <Check className="size-3" /> 完成
-                    </button>
-                    <button
-                      onClick={() => cancelPlan(item)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs text-[#90a4ae] bg-white border border-[#e0e0e0] hover:bg-[#f5f5f5] transition-colors"
-                    >
-                      <Ban className="size-3" /> 划去
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* 已完成的记录 */}
-          {done.length > 0 && (
-            <div className="space-y-2">
-              {planned.length > 0 && <div className="text-[11px] text-[#90a4ae]">已完成</div>}
-              {done.map((item, idx) => (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 p-2.5 rounded-lg border border-[#e3f2fd]/50 hover:bg-[#f5f9ff] transition-colors"
+      <div className="space-y-3">
+        {/* 待完成的日程规划 */}
+        <div className="space-y-2">
+          {planned.map((item) => (
+            <div key={item.id} className="p-2.5 rounded-lg bg-[#fff8e1] border border-[#ffe0b2]">
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#ffe0b2] text-[#e65100] shrink-0">
+                  <Clock className="size-3" />
+                  {formatTime(item.created_at)}
+                </span>
+                <span className="text-sm text-[#1a3a5c] flex-1 truncate">{item.title}</span>
+              </div>
+              <div className="mt-2 flex items-center gap-1.5">
+                <button
+                  onClick={() => goFocus(item)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-[#42a5f5] text-white hover:bg-[#1e88e5] transition-colors"
                 >
-                  <div
-                    className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded ${colorMap[idx % colorMap.length]}`}
-                  >
-                    <Clock className="size-3" />
-                    {formatTime(item.created_at)}
-                  </div>
-                  <span className="text-sm text-[#1a3a5c] flex-1 truncate">{item.title}</span>
-                  {!!item.duration_minutes && (
-                    <span className="text-xs text-[#90a4ae] shrink-0">{formatDuration(item.duration_minutes)}</span>
-                  )}
-                </div>
-              ))}
+                  <Play className="size-3" /> 去专注
+                </button>
+                <button
+                  onClick={() => completePlan(item)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-[#66bb6a] text-white hover:bg-[#43a047] transition-colors"
+                >
+                  <Check className="size-3" /> 完成
+                </button>
+                <button
+                  onClick={() => cancelPlan(item)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs text-[#90a4ae] bg-white border border-[#e0e0e0] hover:bg-[#f5f5f5] transition-colors"
+                >
+                  <Ban className="size-3" /> 划去
+                </button>
+              </div>
             </div>
-          )}
+          ))}
         </div>
-      )}
+
+        {/* 已完成的记录 */}
+        {done.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-[11px] text-[#90a4ae]">已完成</div>
+            {done.map((item, idx) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-3 p-2.5 rounded-lg border border-[#e3f2fd]/50 hover:bg-[#f5f9ff] transition-colors"
+              >
+                <div
+                  className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded ${colorMap[idx % colorMap.length]}`}
+                >
+                  <Clock className="size-3" />
+                  {formatTime(item.created_at)}
+                </div>
+                <span className="text-sm text-[#1a3a5c] flex-1 truncate">{item.title}</span>
+                {!!item.duration_minutes && (
+                  <span className="text-xs text-[#90a4ae] shrink-0">{formatDuration(item.duration_minutes)}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

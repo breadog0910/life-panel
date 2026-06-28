@@ -1,11 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/lib/auth-context";
-
-const moods = ["😊", "😐", "😢", "😡"] as const;
-type Mood = (typeof moods)[number];
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -27,53 +22,50 @@ function formatDate(): string {
   });
 }
 
+function weatherEmoji(condition: string): string {
+  const c = condition || "";
+  if (c.includes("雷")) return "⛈️";
+  if (c.includes("雪")) return "❄️";
+  if (c.includes("雨")) return "🌧️";
+  if (c.includes("雾") || c.includes("霾")) return "🌫️";
+  if (c.includes("多云")) return "⛅";
+  if (c.includes("阴")) return "☁️";
+  if (c.includes("晴")) return "☀️";
+  if (c.includes("风") || c.includes("沙")) return "💨";
+  return "🌤️";
+}
+
+type Weather = { temp: number; condition: string; city: string };
+
 export default function GreetingBar() {
-  const { user } = useAuth();
-  const [selectedMood, setSelectedMood] = useState<Mood | null>(null);
-  const today = new Date().toISOString().slice(0, 10);
+  const [weather, setWeather] = useState<Weather | null>(null);
+  const [wxLoading, setWxLoading] = useState(true);
 
-  // Load today's mood from Supabase on mount
+  // 浏览器端直接拉取，按用户真实 IP 自动定位城市
   useEffect(() => {
-    if (!user) return;
-    supabase
-      .from("diaries")
-      .select("mood")
-      .eq("user_id", user.id)
-      .eq("date", today)
-      .is("deleted_at", null)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data?.mood && moods.includes(data.mood as Mood)) {
-          setSelectedMood(data.mood as Mood);
+    let active = true;
+    fetch("https://60s.viki.moe/v2/weather")
+      .then((r) => r.json())
+      .then((j) => {
+        if (!active) return;
+        const d = j?.data;
+        const w = d?.weather;
+        if (w && typeof w.temperature === "number") {
+          setWeather({
+            temp: Math.round(w.temperature),
+            condition: typeof w.condition === "string" ? w.condition : "",
+            city: d?.location?.city || d?.location?.name || "",
+          });
         }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setWxLoading(false);
       });
-  }, [user, today]);
-
-  const handleMoodClick = async (mood: Mood) => {
-    setSelectedMood(mood);
-    if (!user) return;
-
-    // Upsert: update existing diary for today, or create mood-only entry
-    const { data: existing } = await supabase
-      .from("diaries")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("date", today)
-      .is("deleted_at", null)
-      .maybeSingle();
-
-    if (existing) {
-      await supabase.from("diaries").update({ mood }).eq("id", existing.id);
-    } else {
-      await supabase.from("diaries").insert({
-        user_id: user.id,
-        date: today,
-        mood,
-        content: "",
-        tags: [],
-      });
-    }
-  };
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <div className="bg-gradient-to-r from-[#e3f2fd] to-[#fff9c4] rounded-card p-5 md:p-6 flex items-center justify-between">
@@ -83,30 +75,23 @@ export default function GreetingBar() {
         </h2>
         <p className="text-sm text-[#5c8dc9] mt-1">{formatDate()}</p>
       </div>
-      <div className="flex gap-2">
-        {moods.map((mood) => (
-          <button
-            key={mood}
-            onClick={() => handleMoodClick(mood)}
-            className={`text-2xl md:text-3xl p-1.5 rounded-xl transition-all ${
-              selectedMood === mood
-                ? "bg-white shadow-md scale-110"
-                : "hover:scale-110 opacity-60 hover:opacity-100"
-            }`}
-            title={
-              mood === "😊"
-                ? "开心"
-                : mood === "😐"
-                ? "平常"
-                : mood === "😢"
-                ? "低落"
-                : "生气"
-            }
-          >
-            {mood}
-          </button>
-        ))}
-      </div>
+      {weather ? (
+        <div className="flex items-center gap-2.5 shrink-0">
+          <span className="text-3xl md:text-4xl">{weatherEmoji(weather.condition)}</span>
+          <div className="text-right">
+            <div className="text-xl md:text-2xl font-bold text-[#1565c0] leading-none">
+              {weather.temp}°
+            </div>
+            <div className="text-xs text-[#5c8dc9] mt-1 truncate max-w-[7rem]">
+              {weather.city}
+              {weather.city && weather.condition ? " · " : ""}
+              {weather.condition}
+            </div>
+          </div>
+        </div>
+      ) : (
+        wxLoading && <span className="text-xs text-[#90a4ae] shrink-0">天气加载中…</span>
+      )}
     </div>
   );
 }
