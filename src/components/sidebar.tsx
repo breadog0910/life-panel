@@ -10,6 +10,7 @@ import {
   Map,
   Settings,
   Sparkles,
+  FlaskConical,
   ChevronLeft,
   LogOut,
 } from "lucide-react";
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/diary", label: "笔记灵感库", icon: BookOpen },
   { href: "/plan", label: "计划中心", icon: Map },
   { href: "/finance", label: "记账", icon: Wallet },
+  { href: "/lab", label: "实验室", icon: FlaskConical },
   { href: "/partner", label: "伙伴设置", icon: Settings },
   { href: "/settings/ai", label: "AI 智能设置", icon: Sparkles },
 ];

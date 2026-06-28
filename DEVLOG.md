@@ -1049,3 +1049,72 @@
 | `src/app/(main)/plan/page.tsx` | 去掉提醒抽屉；串联 `startFocusForPlan` + 读 query 跳转 |
 | `src/components/schedule-card.tsx` | 今日规划带操作按钮 + 已完成只读；去专注跳 `/plan?focusPlan=` |
 | `src/components/reminder-drawer.tsx` | 删除（去除提醒/备忘板块） |
+
+---
+
+### 2026-06-28 #42 — 实验室板块上线 + 智能题库（文档出题 / 自测 / 模拟卷 / 考试）+ 内测共享 API
+
+**用户诉求：** "加一个灵感板块，里面可以内置很多我想做的小 demo 功能，我 2994811601@qq.com 为管理员账号，可以有很多内测小玩意儿，也可以设置里面内测板块其他用户的大模型 API 用我的。第一个功能：上传 word/txt 文档或文字，可以选择出多少道选择题/多选题/判断题进行自测，会解析并判断对错，还有出模拟卷功能和考试功能。" 经确认四个设计点（均选推荐）：①板块命名「实验室（Lab）」；②内测「全员可见 + 管理员开关 + 自有 Key 优先回退管理员 Key」；③文档支持「粘贴文字 + .txt + .docx」；④功能「自测 + 模拟卷 + 考试全做」。
+
+**实验室框架：**
+- 新增路由 `/lab`（实验室首页，demos 数组驱动，可继续扩展更多小工具）、`/lab/quiz`（智能题库）、`/lab/beta`（内测设置，仅管理员可见）。
+- 侧边栏（记账后、伙伴设置前）+ 手机底栏（第 5 项）加「实验室」入口，图标 `FlaskConical`。
+- **管理员仅按 email 判别**（`src/lib/admin.ts` 的 `ADMIN_EMAIL`/`isAdmin`），**密码绝不硬编码**。
+
+**内测共享 API（Key 不下发前端）：**
+- 管理员在 `/lab/beta` 有总开关「把我的 API 借给大家用」，写入 `beta_config`。
+- 服务端 `resolveAIConfig`（`src/lib/ai-server.ts`，service-role 绕过 RLS）：**用户自有 Key 优先** → 否则当 `beta_config.share_api_enabled` 为真且校验 `admin_user_id` 邮箱确为管理员时，回退用管理员 Key（`usedAdmin:true`）。Key 仅在服务端使用，绝不下发前端。
+- RLS 双保险：`beta_config` 读限 `authenticated`（仅布尔不含 Key），写限 `auth.uid()=admin_user_id AND email=管理员邮箱`。
+
+**智能题库（第一个内测工具）：**
+1. **录入与配置**：文本域粘贴 + 上传 `.txt`（`file.text()`）/ `.docx`（`mammoth/mammoth.browser` 浏览器端 `extractRawText`）；三个数字框选单选/多选/判断题数（0~30，默认 5/0/0）。
+2. **AI 出题**：前端取 `session.access_token` → `POST /api/lab/quiz/generate`；服务端 `generateQuizJSON` 调用 LLM（OpenAI 兼容用 `response_format:json_object`，anthropic 用 `/v1/messages`），返回**带正确答案下标 + 解析**的规范化题目（判断题 options 固定 `["正确","错误"]`，单选/判断 answer 取 1 个，越界/重复过滤）。
+3. **本地判分**（不再额外调 AI）：`gradeQuestion` 排序后数组完全相等即对。自测模式每题「查看解析」即时显示 ✅/❌ + 正确项高亮 + explanation；考试模式顶部倒计时（题数 ×1.5 分钟，到点自动交卷），过程不显示对错，交卷后统一计分 + 逐题回顾。
+4. **模拟卷**：出题后可「保存为模拟卷」（存 `quiz_papers`，含题目 JSONB + 三类题数），「我的模拟卷」列表可复用做自测/考试，**删除走应用内行内二次确认**（不用 `window.confirm`）。
+5. **作答记录**：自测/考试交卷写 `quiz_attempts`（mode/score/total/answers，考试附 duration）。
+
+**验证：** `node node_modules/typescript/bin/tsc --noEmit` exit=0；dev server 编译 `/lab`、`/lab/quiz`、`/lab/beta` 均返回 200，无报错。**未能本地验证联网 AI 出题与 CRUD**：需用户在能联网且已登录的环境，并先跑迁移后实测。
+
+**使用前需要做：** 在 Supabase SQL Editor 运行 `supabase/migrate-lab-quiz.sql`（建 `beta_config` / `quiz_papers` / `quiz_attempts` 三表，IF NOT EXISTS + RLS）。另需保证管理员账号在「AI 智能设置」配置了可用的 API Key，内测共享才有 Key 可借。
+
+**修改 / 新增文件：**
+| 文件 | 操作 |
+|------|------|
+| `supabase/migrate-lab-quiz.sql` | 新增：三表迁移（需手动运行） |
+| `src/types/database.ts` | 新增 `BetaConfig`/`QuizQuestion`/`QuizPaper`/`QuizAttempt` 等类型 |
+| `src/lib/admin.ts` | 新增：`ADMIN_EMAIL` + `isAdmin`（仅 email 判别） |
+| `src/lib/doc-extract.ts` | 新增：`extractText`（.docx → mammoth，其它 → file.text） |
+| `src/types/mammoth.d.ts` | 新增：mammoth.browser ambient 声明 |
+| `src/lib/ai-server.ts` | 新增：`resolveAIConfig`（共享回退）+ `generateQuizJSON`（出题+规范化） |
+| `src/app/api/lab/quiz/generate/route.ts` | 新增：出题 API（service-role 鉴权） |
+| `src/app/(main)/lab/page.tsx` | 新增：实验室首页（demos + 管理员入口） |
+| `src/app/(main)/lab/beta/page.tsx` | 新增：内测设置（isAdmin gate + 共享开关） |
+| `src/app/(main)/lab/quiz/page.tsx` | 新增：智能题库薄壳页 |
+| `src/components/lab/quiz-tool.tsx` | 新增：录入配置/操作区/我的模拟卷列表 |
+| `src/components/lab/quiz-runner.tsx` | 新增：自测/考试答题器 + 本地判分 + 写 quiz_attempts |
+| `src/components/sidebar.tsx` / `src/components/bottom-nav.tsx` | 加「实验室」入口 |
+| `package.json` | 加依赖 `mammoth ^1.12.0` |
+
+---
+
+### 2026-06-28 #43 — 智能题库增强：抽题组卷（勾选 / 随机抽题 → 组小卷 / 自测 / 考试）
+
+**用户诉求：** "最好是通过一份资料能直接有一个题库，可以选择从中选择几道题抽出来进行组卷或自测。" 即：一份资料生成题量稍大的题库，再从中抽几道题组卷或自测/考试。经确认两个设计点（均选推荐）：①抽题方式「勾选 + 随机都支持」；②题库存储「复用现有模拟卷列表」（大题库也存进 `quiz_papers`，从中抽题组小卷，**不新建表 / 不加迁移**）。
+
+**做法：**
+- `quiz-tool` 状态机由三阶段扩展为四阶段：`config | ready | select | running`，新增 `select`（抽题组卷）阶段。
+- 入口两处：①出题后「操作区」加「抽题组卷」按钮 → `openPicker(questions, null, "ready")`；②「我的模拟卷」每张卡加「抽题」按钮 → `openPicker(paper.questions, paper.id, "config")`。返回时回到各自来源阶段。
+- 新增 `QuizPicker` 组件（`src/components/lab/quiz-picker.tsx`）：
+  - **手动勾选**：题目列表逐题点选（`Set<string>` 存 id，保留题库原顺序），全选 / 清空工具条 + 实时已选统计。
+  - **随机抽取**：三个数字框分别填单/多/判抽取数（上限=题库各类可用数），按类型 Fisher-Yates 洗牌后抽取，覆盖当前勾选。
+  - **三个出口**：自测选中题 / 考试选中题（复用 `QuizRunner`，考试限时按选中题数 ×1.5 分钟）/ 组卷（`insert quiz_papers` 存为新模拟卷，可自定义卷名）。未选题时三按钮禁用。
+- `quiz-tool` 抽出 `insertPaper(qs, title)` 复用于「保存为模拟卷」与 picker 组卷；`handleSavePaper` 改为调用它。
+- `ready` 阶段补提示文案：多出几道题即可攒成大题库，再从里面抽小卷。
+
+**验证：** `node node_modules/typescript/bin/tsc --noEmit` exit=0；dev server 编译 `/lab/quiz` 返回 200。本地判分 / 复用 `QuizRunner` 逻辑不变，无需新迁移。
+
+**修改 / 新增文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/components/lab/quiz-picker.tsx` | 新增：抽题组卷面板（勾选 + 随机抽取 → 自测 / 考试 / 组卷） |
+| `src/components/lab/quiz-tool.tsx` | 修改：加 `select` 阶段 + `openPicker`/`insertPaper`；ready 区与模拟卷卡加入口按钮 |

@@ -185,3 +185,49 @@ export interface UserCategory {
   sort_order: number;
   created_at: string;
 }
+
+// 实验室 —— 内测共享配置
+export interface BetaConfig {
+  id: string;
+  admin_user_id: string;
+  share_api_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// 实验室 —— 智能题库
+export type QuizQuestionType = "single" | "multiple" | "judge";
+
+export interface QuizQuestion {
+  id: string;
+  type: QuizQuestionType;
+  question: string;
+  options: string[];          // 判断题为 ["正确", "错误"]
+  answer: number[];           // 正确选项下标；单选/判断长度为 1
+  explanation: string;
+}
+
+export interface QuizPaper {
+  id: string;
+  user_id: string;
+  title: string;
+  questions: QuizQuestion[];
+  single_count: number;
+  multiple_count: number;
+  judge_count: number;
+  created_at: string;
+}
+
+export type QuizMode = "selftest" | "exam";
+
+export interface QuizAttempt {
+  id: string;
+  user_id: string;
+  paper_id?: string | null;
+  mode: QuizMode;
+  answers: number[][];        // 每题用户选择的下标数组
+  score: number;
+  total: number;
+  duration_seconds?: number | null;
+  created_at: string;
+}
