@@ -224,6 +224,21 @@ export interface AdminUserRow {
   shareApi: boolean;
 }
 
+// 意见反馈
+export interface Feedback {
+  id: string;
+  user_id: string;
+  content: string;
+  reply: string | null;
+  replied_at: string | null;
+  created_at: string;
+}
+
+// 管理后台 —— 反馈列表项（含提交者邮箱）
+export interface AdminFeedbackRow extends Feedback {
+  email: string | null;
+}
+
 // 实验室 —— 智能题库
 export type QuizQuestionType = "single" | "multiple" | "judge";
 

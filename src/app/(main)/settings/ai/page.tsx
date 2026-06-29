@@ -5,6 +5,7 @@ import { Settings, Save, Key, Globe, Sparkles, Check, AlertCircle } from "lucide
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import type { AIProvider, AISettings } from "@/types/database";
+import BackToSettings from "@/components/back-to-settings";
 
 const providerOptions: { key: AIProvider; label: string; desc: string }[] = [
   { key: "deepseek", label: "DeepSeek", desc: "便宜好用，中文优秀" },
@@ -94,14 +95,18 @@ export default function AISettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-[#90a4ae] text-sm">
-        加载中...
+      <div className="space-y-4 max-w-2xl">
+        <BackToSettings />
+        <div className="flex items-center justify-center h-64 text-[#90a4ae] text-sm">
+          加载中...
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-4 max-w-2xl">
+      <BackToSettings />
       {/* 标题 */}
       <div className="flex items-center gap-2">
         <Settings className="size-5 text-[#1565c0]" />

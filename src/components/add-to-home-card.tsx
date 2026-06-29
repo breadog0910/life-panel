@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { uploadImage } from "@/lib/storage";
 import { HOME_ICON_KEY, HOME_ICON_EVENT } from "@/components/home-screen-meta";
-import { Smartphone, ImagePlus, Trash2, Check, ChevronRight, ChevronUp } from "lucide-react";
+import { Smartphone, ImagePlus, Trash2, Check } from "lucide-react";
 
 // 把任意图片画进 512×512 画布（居中裁切）导出为 PNG，做出方形图标
 async function toSquarePng(file: File, size = 512): Promise<File> {
@@ -50,7 +50,6 @@ export default function AddToHomeCard() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [justSaved, setJustSaved] = useState(false);
-  const [expanded, setExpanded] = useState(false);
 
   const persist = (url: string | null) => {
     try {
@@ -86,34 +85,11 @@ export default function AddToHomeCard() {
     }
   };
 
-  // 收起态：概览页只露一行不显眼的小入口
-  if (!expanded) {
-    return (
-      <button
-        onClick={() => setExpanded(true)}
-        className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-[#90a4ae] hover:text-[#42a5f5] transition-colors"
-      >
-        <Smartphone className="size-3.5" />
-        把人生面板添加到手机桌面 · 自定义封面
-        <ChevronRight className="size-3.5" />
-      </button>
-    );
-  }
-
   return (
     <div className="bg-white rounded-card p-5 border border-[#e3f2fd]">
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <h3 className="font-semibold text-[#1565c0] text-sm flex items-center gap-2">
-          <Smartphone className="size-4" /> 添加到桌面 · 自定义封面
-        </h3>
-        <button
-          onClick={() => setExpanded(false)}
-          className="text-[#90a4ae] hover:text-[#42a5f5] transition-colors shrink-0"
-          title="收起"
-        >
-          <ChevronUp className="size-4" />
-        </button>
-      </div>
+      <h3 className="font-semibold text-[#1565c0] text-sm flex items-center gap-2 mb-1">
+        <Smartphone className="size-4" /> 添加到桌面 · 自定义封面
+      </h3>
       <p className="text-[11px] text-[#90a4ae] mb-4 leading-relaxed">
         上传一张图片当作把网页「添加到主屏幕」后的图标，自动裁成方形。
       </p>

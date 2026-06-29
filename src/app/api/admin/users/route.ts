@@ -1,43 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { ADMIN_EMAIL } from "@/lib/admin";
+import { requireAdmin, listAllUsers } from "@/lib/admin-server";
 import type { AdminUserRow } from "@/types/database";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// 校验请求来自管理员，返回 service-role 客户端；失败返回错误响应
-async function requireAdmin(
-  req: Request
-): Promise<{ supabase: SupabaseClient } | { error: NextResponse }> {
-  const token = req.headers.get("Authorization")?.replace("Bearer ", "");
-  if (!token) {
-    return { error: NextResponse.json({ error: "未授权" }, { status: 401 }) };
-  }
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  const { data: userData, error } = await supabase.auth.getUser(token);
-  if (error || !userData.user) {
-    return { error: NextResponse.json({ error: "用户验证失败" }, { status: 401 }) };
-  }
-  if (userData.user.email !== ADMIN_EMAIL) {
-    return { error: NextResponse.json({ error: "仅管理员可操作" }, { status: 403 }) };
-  }
-  return { supabase };
-}
-
-// 枚举全部注册用户（分页拉取）
-async function listAllUsers(supabase: SupabaseClient): Promise<User[]> {
-  const all: User[] = [];
-  for (let page = 1; page <= 50; page++) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 200 });
-    if (error) throw error;
-    const users = data?.users ?? [];
-    all.push(...users);
-    if (users.length < 200) break;
-  }
-  return all;
-}
 
 // GET /api/admin/users —— 列出所有用户及两项内测权限状态
 export async function GET(req: Request) {
@@ -111,5 +74,32 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error("切换内测权限失败:", error);
     return NextResponse.json({ error: error.message || "操作失败" }, { status: 500 });
+  }
+}
+
+// PATCH /api/admin/users —— 管理员替某用户重置登录密码
+export async function PATCH(req: Request) {
+  try {
+    const auth = await requireAdmin(req);
+    if ("error" in auth) return auth.error;
+    const { supabase } = auth;
+
+    const body = await req.json().catch(() => ({}));
+    const userId: string = body?.userId || "";
+    const password: string = typeof body?.password === "string" ? body.password : "";
+    if (!userId) {
+      return NextResponse.json({ error: "缺少 userId" }, { status: 400 });
+    }
+    if (password.length < 6) {
+      return NextResponse.json({ error: "密码至少 6 位" }, { status: 400 });
+    }
+
+    const { error } = await supabase.auth.admin.updateUserById(userId, { password });
+    if (error) throw error;
+
+    return NextResponse.json({ success: true, userId });
+  } catch (error: any) {
+    console.error("重置密码失败:", error);
+    return NextResponse.json({ error: error.message || "重置失败" }, { status: 500 });
   }
 }

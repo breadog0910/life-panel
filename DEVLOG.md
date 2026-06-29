@@ -1370,3 +1370,88 @@
 **上线前需做：** 在 Supabase SQL Editor **重跑** `supabase/migrate-beta-users.sql`（加两列）；尚未执行的 `supabase/migrate-entry-private.sql`（#53）也要跑。
 
 **验证：** `tsc --noEmit` exit=0。
+
+---
+
+### 2026-06-29 #55 — 管理员重置用户密码 + 意见反馈（用户提交 · 管理员回复）
+
+**用户诉求：** "可以看到用户登录密码吗，要是用户忘记登录密码怎么办"（→ 加重置密码）；"用户能给管理账号提意见和反馈，加一个这个页面"。
+
+**说明：** 密码以 bcrypt 哈希存储、明文不可见（含 service-role 也拿不到），故改为「管理员代设新密码」方案，绕开国内不稳的邮件链路。
+
+**实现：**
+- **管理员重置密码**：`/api/admin/users` 新增 `PATCH { userId, password }`，service-role 调 `auth.admin.updateUserById(userId, { password })`（服务端校验管理员身份 + 密码≥6 位）。用户管理页每行加「🔑 重置密码」按钮 → 应用内弹窗（非浏览器原生）输入新密码 → 成功后弹窗回显新密码，便于线下转告。
+- **意见反馈（双向）**：新建 `feedback` 表。用户在 `/feedback` 提交建议/Bug，并看到自己的历史反馈与管理员回复（待回复/已回复状态）。管理员在 `/lab/feedback`「反馈箱」查看全部反馈（含提交者邮箱）、逐条回复，顶部显示待回复数。入口：用户侧在侧边栏底部用户区加「💌 意见反馈」图标；管理员侧在实验室首页加「反馈箱」入口。
+  - 权限：`feedback` RLS —— 用户只能读/写自己的（`auth.uid() = user_id`），管理员邮箱可读写全部；管理员列表/回复走 `/api/admin/feedback`（service-role）。
+- **重构**：把 `requireAdmin` / `listAllUsers` 抽到 `src/lib/admin-server.ts` 共享给 users / feedback 两个管理 API。
+
+**新增/修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `supabase/migrate-feedback.sql` | 新建 `feedback` 表 + RLS（用户读写自己 / 管理员全权） |
+| `src/lib/admin-server.ts` | 新增：共享 `requireAdmin` + `listAllUsers` |
+| `src/app/api/admin/users/route.ts` | 改用共享 helper；新增 `PATCH` 重置密码 |
+| `src/app/api/admin/feedback/route.ts` | 新增：GET 列出反馈 / POST 回复 |
+| `src/app/(main)/feedback/page.tsx` | 新增：用户提交 + 历史 + 查看回复 |
+| `src/app/(main)/lab/feedback/page.tsx` | 新增：管理员反馈箱（查看 + 回复） |
+| `src/app/(main)/lab/users/page.tsx` | 每行加「重置密码」按钮 + 应用内弹窗 |
+| `src/app/(main)/lab/page.tsx` | 实验室首页加「反馈箱」入口 |
+| `src/components/sidebar.tsx` | 侧边栏底部用户区加「意见反馈」入口 |
+| `src/types/database.ts` | 新增 `Feedback` / `AdminFeedbackRow` |
+
+**上线前需做：** 在 Supabase SQL Editor 运行 `supabase/migrate-feedback.sql`。
+
+**已知限制：** 反馈入口在桌面侧边栏底部用户区；移动端无用户/设置区（仅底部 5 Tab），暂只能通过 `/feedback` 网址访问，需要的话再补移动端入口。
+
+**验证：** `tsc --noEmit` exit=0。
+
+---
+
+### 2026-06-29 #56 — 统一「设置」中心（桌面 + 移动端）
+
+**用户诉求：** "给两个端都搞个设置区，包含添加到屏幕页面的设置，反馈入口，以及连接 ai 大模型的入口，都整理到设置里"。
+
+**实现：**
+- 新建设置中心 `/settings`，集中三项入口/设置：
+  - **连接 AI 大模型** → `/settings/ai`
+  - **意见反馈** → `/feedback`
+  - **伙伴设置** → `/partner`
+  - **添加到屏幕**：直接内嵌 `AddToHomeCard`（默认展开），在设置页即可上传/更换/移除主屏幕封面。
+- **两端都有入口**：
+  - 桌面侧边栏：把原「AI 智能设置」「伙伴设置」两项合并为单个「⚙️ 设置」导航项（二者改为设置中心内的卡片）；移除上一版加在侧边栏底部用户区的「意见反馈」小图标（已并入设置）。
+  - 移动端底部导航：新增第 6 个 Tab「设置」（此前移动端无设置/用户区，反馈/AI 入口均不可达，现已解决）。
+- **概览页瘦身**：移除概览页底部的「添加到屏幕」小入口（迁入设置中心，仍永久可达、可改封面）。
+
+**新增/修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/app/(main)/settings/page.tsx` | 新增：设置中心（AI / 反馈 / 伙伴 链接卡 + 内嵌添加到屏幕卡） |
+| `src/components/add-to-home-card.tsx` | 加 `defaultExpanded` 入参（设置页默认展开） |
+| `src/app/(main)/page.tsx` | 概览页移除 `<AddToHomeCard />` |
+| `src/components/sidebar.tsx` | 导航合并为「设置」；移除底部反馈小图标 |
+| `src/components/bottom-nav.tsx` | 移动端新增「设置」Tab（共 6 个） |
+
+**验证：** `tsc --noEmit` exit=0（无新增数据库迁移）。
+
+---
+
+### 2026-06-29 #57 — 设置中心细化（移动端隐藏伙伴 · 子页统一 · 返回键 · 去折叠）
+
+**用户诉求（多轮）：** "手机端不需要有伙伴设置"；"把添加到桌面的形态和意见反馈和连接大模型一样"（统一为跳转卡片）；"都要有一个返回键能返回设置主页面"；"添加到桌面那个就不需要收起了"。
+
+**实现：**
+- **移动端隐藏伙伴设置**：桌面悬浮伙伴只在本机可用，移动端无意义。设置中心「伙伴设置」卡片改为 `hidden md:flex`，仅桌面显示。
+- **添加到桌面改为独立子页**：与 AI / 反馈 一致，设置中心改为链接卡 → 跳转新建子页 `/settings/home-screen`（内嵌 `AddToHomeCard`）。
+- **返回键**：新建 `BackToSettings` 组件（「← 返回设置」），加到 `/settings/ai`、`/settings/home-screen`、`/feedback`、`/partner` 四个子页顶部。
+- **去掉折叠**：`AddToHomeCard` 移除收起/展开逻辑（独立子页后多余），进入即完整卡片；同步移除 `defaultExpanded` 入参。
+
+**新增/修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `src/components/back-to-settings.tsx` | 新增：返回设置主页的小链接 |
+| `src/app/(main)/settings/home-screen/page.tsx` | 新增：添加到桌面独立子页 |
+| `src/app/(main)/settings/page.tsx` | 伙伴设置卡 `hidden md:flex`；添加到桌面改为链接卡 |
+| `src/components/add-to-home-card.tsx` | 移除折叠逻辑与 `defaultExpanded` 入参 |
+| `src/app/(main)/settings/ai/page.tsx` · `partner/page.tsx` · `feedback/page.tsx` | 顶部加返回键 |
+
+**验证：** `tsc --noEmit` exit=0（无新增数据库迁移）。

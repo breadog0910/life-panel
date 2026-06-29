@@ -9,7 +9,6 @@ import {
   Wallet,
   Map,
   Settings,
-  Sparkles,
   FlaskConical,
   ChevronLeft,
   LogOut,
@@ -23,8 +22,7 @@ const navItems = [
   { href: "/plan", label: "计划中心", icon: Map },
   { href: "/finance", label: "记账", icon: Wallet },
   { href: "/lab", label: "实验室", icon: FlaskConical },
-  { href: "/partner", label: "伙伴设置", icon: Settings },
-  { href: "/settings/ai", label: "AI 智能设置", icon: Sparkles },
+  { href: "/settings", label: "设置", icon: Settings },
 ];
 
 function UserFooter() {
@@ -42,7 +40,7 @@ function UserFooter() {
       </div>
       <button
         onClick={signOut}
-        className="p-1.5 rounded-lg hover:bg-white/50 text-[#64b5f6] hover:text-red-400 transition-colors"
+        className="p-1.5 rounded-lg hover:bg-white/50 text-[#64b5f6] hover:text-red-400 transition-colors shrink-0"
         title="退出登录"
       >
         <LogOut className="size-3.5" />

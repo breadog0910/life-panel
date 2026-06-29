@@ -9,6 +9,7 @@ import {
   Wallet,
   Map,
   FlaskConical,
+  Settings,
 } from "lucide-react";
 
 const mobileNavItems = [
@@ -17,6 +18,7 @@ const mobileNavItems = [
   { href: "/plan", label: "计划", icon: Map },
   { href: "/finance", label: "记账", icon: Wallet },
   { href: "/lab", label: "实验室", icon: FlaskConical },
+  { href: "/settings", label: "设置", icon: Settings },
 ];
 
 export default function BottomNav() {

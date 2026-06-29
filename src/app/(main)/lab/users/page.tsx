@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Users, ArrowLeft, RefreshCw, Check, AlertCircle } from "lucide-react";
+import { Users, ArrowLeft, RefreshCw, Check, AlertCircle, KeyRound, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { isAdmin } from "@/lib/admin";
@@ -35,6 +35,13 @@ export default function AdminUsersPage() {
   const [shareGlobal, setShareGlobal] = useState(false);
   const [shareSaving, setShareSaving] = useState(false);
   const [shareSaved, setShareSaved] = useState(false);
+
+  // 重置密码弹窗
+  const [resetTarget, setResetTarget] = useState<AdminUserRow | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
+  const [resetError, setResetError] = useState("");
 
   const load = useCallback(async () => {
     if (!admin) {
@@ -140,6 +147,50 @@ export default function AdminUsersPage() {
       setError(e.message || "操作失败");
     } finally {
       setTogglingKey(null);
+    }
+  };
+
+  // 重置密码
+  const openReset = (row: AdminUserRow) => {
+    setResetTarget(row);
+    setNewPassword("");
+    setResetDone(false);
+    setResetError("");
+  };
+  const closeReset = () => {
+    setResetTarget(null);
+    setNewPassword("");
+    setResetDone(false);
+    setResetError("");
+  };
+  const submitReset = async () => {
+    if (!resetTarget) return;
+    if (newPassword.length < 6) {
+      setResetError("密码至少 6 位");
+      return;
+    }
+    setResetting(true);
+    setResetError("");
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ userId: resetTarget.id, password: newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "重置失败");
+      setResetDone(true);
+    } catch (e: any) {
+      setResetError(e.message || "重置失败");
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -273,9 +324,95 @@ export default function AdminUsersPage() {
                     className="size-5 accent-[#66bb6a]"
                   />
                 </label>
+                <button
+                  onClick={() => openReset(row)}
+                  title="重置该用户的登录密码"
+                  className="flex items-center gap-1 text-xs text-[#90a4ae] hover:text-[#e65100] transition-colors"
+                >
+                  <KeyRound className="size-3.5" /> 重置密码
+                </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 重置密码弹窗 */}
+      {resetTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          onClick={closeReset}
+        >
+          <div
+            className="bg-white rounded-card border border-[#e3f2fd] w-full max-w-sm p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-[#1565c0] flex items-center gap-2">
+                <KeyRound className="size-4" /> 重置密码
+              </h3>
+              <button
+                onClick={closeReset}
+                className="text-[#90a4ae] hover:text-[#1a3a5c] transition-colors"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[#90a4ae] break-all">
+              为 <span className="text-[#1a3a5c] font-medium">{resetTarget.email || "（无邮箱）"}</span>{" "}
+              设置一个新登录密码，设置后请线下告诉对方。
+            </p>
+
+            {resetDone ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-1.5 text-sm text-[#2e7d32]">
+                  <Check className="size-4" /> 密码已重置
+                </div>
+                <div className="bg-[#f0f6ff] rounded-lg p-3 text-sm text-[#1a3a5c] break-all">
+                  新密码：<span className="font-mono font-medium">{newPassword}</span>
+                </div>
+                <button
+                  onClick={closeReset}
+                  className="w-full px-4 py-2 rounded-full text-sm font-medium bg-[#42a5f5] text-white hover:bg-[#1e88e5] transition-colors"
+                >
+                  完成
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="新密码（至少 6 位）"
+                  autoFocus
+                  className="w-full px-3 py-2 rounded-lg border border-[#e3f2fd] text-sm text-[#1a3a5c] focus:outline-none focus:border-[#42a5f5]"
+                />
+                {resetError && (
+                  <div className="flex items-center gap-1.5 text-xs text-[#c62828]">
+                    <AlertCircle className="size-3.5" /> {resetError}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={closeReset}
+                    disabled={resetting}
+                    className="flex-1 px-4 py-2 rounded-full text-sm font-medium bg-[#f0f6ff] text-[#5c8dc9] hover:bg-[#e3f2fd] transition-colors disabled:opacity-50"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={submitReset}
+                    disabled={resetting || newPassword.length < 6}
+                    className="flex-1 px-4 py-2 rounded-full text-sm font-medium bg-[#42a5f5] text-white hover:bg-[#1e88e5] transition-colors disabled:opacity-50"
+                  >
+                    {resetting ? "重置中..." : "确认重置"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

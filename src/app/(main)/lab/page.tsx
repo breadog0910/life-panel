@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FlaskConical, Users } from "lucide-react";
+import { FlaskConical, Users, MessageSquare } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { isAdmin } from "@/lib/admin";
 
@@ -40,6 +40,12 @@ export default function LabPage() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[#e3f2fd] text-[#1565c0] hover:bg-[#bbdefb] transition-colors"
             >
               <Users className="size-3.5" /> 用户管理
+            </Link>
+            <Link
+              href="/lab/feedback"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[#e3f2fd] text-[#1565c0] hover:bg-[#bbdefb] transition-colors"
+            >
+              <MessageSquare className="size-3.5" /> 反馈箱
             </Link>
           </div>
         )}
