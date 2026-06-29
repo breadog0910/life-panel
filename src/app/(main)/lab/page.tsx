@@ -21,6 +21,13 @@ const demos: Demo[] = [
     desc: "上传文档/粘贴文字，AI 出选择/多选/判断题，自测 · 模拟卷 · 考试",
     badge: "内测",
   },
+  {
+    href: "/lab/flashcards",
+    emoji: "🃏",
+    title: "英语闪卡",
+    desc: "导入中英文单词或句子，AI 自动生成卡片，左右滑动记认识，不认识的反复轮换直到掌握",
+    badge: "内测",
+  },
 ];
 
 export default function LabPage() {

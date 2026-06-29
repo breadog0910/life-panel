@@ -275,3 +275,18 @@ export interface QuizAttempt {
   duration_seconds?: number | null;
   created_at: string;
 }
+
+export interface Flashcard {
+  id: string;
+  en: string;                 // 英文词/短语
+  zh: string;                 // 中文释义
+}
+
+export interface FlashcardDeck {
+  id: string;
+  user_id: string;
+  title: string;
+  cards: Flashcard[];
+  card_count: number;
+  created_at: string;
+}

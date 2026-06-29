@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { AIProvider, QuizQuestion, QuizQuestionType } from "@/types/database";
+import type { AIProvider, QuizQuestion, QuizQuestionType, Flashcard } from "@/types/database";
 import { ADMIN_EMAIL } from "@/lib/admin";
 
 export interface ResolvedAIConfig {
@@ -154,17 +154,16 @@ function normalizeQuestions(raw: unknown): QuizQuestion[] {
   return out;
 }
 
-// 调用 LLM 出题，返回规范化后的题目数组
-export async function generateQuizJSON(
+// 调用 LLM 并把返回解析为 JSON 对象（兼容 OpenAI 兼容接口与 Anthropic）
+async function callChatJSON(
   config: ResolvedAIConfig,
-  sourceText: string,
-  counts: QuizCounts
-): Promise<QuizQuestion[]> {
+  systemPrompt: string,
+  userContent: string,
+  maxTokens = 4000
+): Promise<unknown> {
   const pc = PROVIDER_CONFIGS[config.provider] || PROVIDER_CONFIGS.deepseek;
   const base = (config.apiBase || pc.defaultBase).replace(/\/$/, "");
   const model = config.model || pc.defaultModel;
-  const systemPrompt = buildSystemPrompt(counts);
-  const userContent = `【资料】\n${sourceText.slice(0, MAX_SOURCE_CHARS)}`;
 
   let resultText: string;
   if (config.provider === "anthropic") {
@@ -177,7 +176,7 @@ export async function generateQuizJSON(
       },
       body: JSON.stringify({
         model,
-        max_tokens: 4000,
+        max_tokens: maxTokens,
         system: systemPrompt,
         messages: [{ role: "user", content: userContent }],
         temperature: 0.4,
@@ -214,16 +213,93 @@ export async function generateQuizJSON(
     resultText = data.choices?.[0]?.message?.content || "{}";
   }
 
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(resultText);
+    return JSON.parse(resultText);
   } catch {
     // 个别模型会包额外文字，尝试截取首个 JSON 对象
     const m = resultText.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error("AI 返回内容无法解析为题目");
-    parsed = JSON.parse(m[0]);
+    if (!m) throw new Error("AI 返回内容无法解析");
+    return JSON.parse(m[0]);
   }
+}
+
+// 调用 LLM 出题，返回规范化后的题目数组
+export async function generateQuizJSON(
+  config: ResolvedAIConfig,
+  sourceText: string,
+  counts: QuizCounts
+): Promise<QuizQuestion[]> {
+  const systemPrompt = buildSystemPrompt(counts);
+  const userContent = `【资料】\n${sourceText.slice(0, MAX_SOURCE_CHARS)}`;
+  const parsed = await callChatJSON(config, systemPrompt, userContent);
   const questions = normalizeQuestions(parsed);
   if (questions.length === 0) throw new Error("AI 未能生成有效题目，请调整资料或重试");
   return questions;
+}
+
+export type FlashcardMode = "auto" | "word" | "sentence";
+
+function buildFlashcardPrompt(count: number, mode: FlashcardMode): string {
+  const head = `你是英语学习卡片整理助手。请根据用户给出的【资料】整理成约 ${count} 张「英文 ↔ 中文」记忆卡片。`;
+  let task: string;
+  if (mode === "word") {
+    task = `卡片粒度：单词/短语。从资料中提取重点英文词或短语，配上准确简洁的中文释义（一般不超过 20 个汉字，可含词性或常见搭配）。`;
+  } else if (mode === "sentence") {
+    task = `卡片粒度：整句。把资料按句子切分，每张卡片是一个完整的英文句子，zh 为这句话通顺自然的中文翻译；保留标点，不要拆碎或合并句子。`;
+  } else {
+    task = `卡片粒度：自动判断。若资料是单词表/中英对照词条，就按单词或短语配中文释义；若是句子、对话或整篇课文，就按完整句子配中文翻译。`;
+  }
+  return `${head}
+${task}
+严格只返回如下 JSON（不要任何额外文字、不要 markdown 代码块）：
+{
+  "cards": [
+    { "en": "英文词/短语/句子", "zh": "对应中文" }
+  ]
+}
+规则：
+- en 为英文，zh 为中文，一一对应。
+- 若资料本身是中英对照，请直接配对，不要漏掉。
+- 去重，不要重复词条或句子。
+- 卡片数量尽量接近 ${count} 张；资料不足时可少于该数。`;
+}
+
+function normalizeCards(raw: unknown): Flashcard[] {
+  const arr = Array.isArray((raw as { cards?: unknown })?.cards)
+    ? (raw as { cards: unknown[] }).cards
+    : Array.isArray(raw)
+    ? (raw as unknown[])
+    : [];
+  const out: Flashcard[] = [];
+  const seen = new Set<string>();
+  arr.forEach((item, idx) => {
+    const c = item as Record<string, unknown>;
+    const en = String(c.en ?? c.english ?? c.front ?? "").trim();
+    const zh = String(c.zh ?? c.cn ?? c.chinese ?? c.back ?? "").trim();
+    if (!en || !zh) return;
+    const key = en.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({
+      id: `fc_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 8)}`,
+      en,
+      zh,
+    });
+  });
+  return out;
+}
+
+// 调用 LLM 生成英语闪卡，返回规范化、去重后的卡片数组
+export async function generateFlashcardsJSON(
+  config: ResolvedAIConfig,
+  sourceText: string,
+  count: number,
+  mode: FlashcardMode = "auto"
+): Promise<Flashcard[]> {
+  const systemPrompt = buildFlashcardPrompt(count, mode);
+  const userContent = `【资料】\n${sourceText.slice(0, MAX_SOURCE_CHARS)}`;
+  const parsed = await callChatJSON(config, systemPrompt, userContent);
+  const cards = normalizeCards(parsed);
+  if (cards.length === 0) throw new Error("AI 未能生成有效卡片，请调整资料或重试");
+  return cards;
 }
