@@ -67,7 +67,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="flex items-center justify-between p-4 border-b border-[#bbdefb]">
         {!collapsed && (
-          <h1 className="font-bold text-[#1565c0] text-sm">🌸 我的小窝</h1>
+          <h1 className="font-bold text-[#1565c0] text-sm">🌸 人生面板</h1>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}

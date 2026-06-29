@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Wallet, Plus, Trash2, Save, X, Settings2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import type { Transaction, CategoryKind } from "@/types/database";
 import { useCategories, type CategorySeed } from "@/lib/use-categories";
 import CategoryManager from "@/components/category-manager";
+import FinanceCharts from "@/components/finance-charts";
 
 const FINANCE_SEEDS: CategorySeed[] = [
   ...["餐饮", "交通", "购物", "娱乐", "学习", "医疗", "住房", "其他"].map(
@@ -23,7 +24,7 @@ function formatCurrency(n: number): string {
 
 export default function FinancePage() {
   const { user } = useAuth();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [yearTx, setYearTx] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
   const {
@@ -57,25 +58,28 @@ export default function FinancePage() {
   const loadTransactions = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const [year, month] = filterMonth.split("-");
-    const startDate = `${year}-${month}-01`;
-    const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-    const endDate = `${year}-${month}-${String(lastDay).padStart(2, "0")}`;
+    const year = filterMonth.slice(0, 4);
     const { data } = await supabase
       .from("transactions")
       .select("*")
       .eq("user_id", user.id)
-      .gte("date", startDate)
-      .lte("date", endDate)
+      .gte("date", `${year}-01-01`)
+      .lte("date", `${year}-12-31`)
       .order("date", { ascending: false })
       .order("created_at", { ascending: false });
-    if (data) setTransactions(data as Transaction[]);
+    if (data) setYearTx(data as Transaction[]);
     setLoading(false);
   }, [user, filterMonth]);
 
   useEffect(() => {
     loadTransactions();
   }, [loadTransactions]);
+
+  // 当前筛选月份的流水（从整年数据派生，供汇总卡片和账本列表使用）
+  const transactions = useMemo(
+    () => yearTx.filter((t) => t.date.startsWith(filterMonth)),
+    [yearTx, filterMonth]
+  );
 
   // 新建记录且未选分类时，默认选中当前类型的第一个分类
   useEffect(() => {
@@ -209,6 +213,9 @@ export default function FinancePage() {
           </div>
         </div>
       </div>
+
+      {/* Charts */}
+      <FinanceCharts monthTx={transactions} yearTx={yearTx} filterMonth={filterMonth} />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Ledger list */}

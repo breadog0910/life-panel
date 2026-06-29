@@ -27,6 +27,15 @@ export interface Entry {
   deleted_at?: string;
 }
 
+// 笔记追记 / 评论
+export interface EntryComment {
+  id: string;
+  entry_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+}
+
 // AI 设置
 export type AIProvider = "deepseek" | "qwen" | "glm" | "doubao" | "openai" | "anthropic";
 
