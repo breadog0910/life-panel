@@ -217,10 +217,8 @@ export default function FinancePage() {
       {/* Charts */}
       <FinanceCharts monthTx={transactions} yearTx={yearTx} filterMonth={filterMonth} />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Ledger list */}
-        <div className="md:col-span-2">
-          <div className="bg-white rounded-card border border-[#e3f2fd] p-4">
+      {/* Ledger list */}
+      <div className="bg-white rounded-card border border-[#e3f2fd] p-4">
             {Object.keys(grouped).length === 0 ? (
               <div className="text-center py-12 text-sm text-[#90a4ae]">
                 💰 本月还没有记账记录
@@ -256,7 +254,7 @@ export default function FinancePage() {
                           {items.map((t) => (
                             <div
                               key={t.id}
-                              className="flex items-center justify-between p-2.5 rounded-lg bg-[#f5f9ff] border border-[#e3f2fd] group"
+                              className="flex items-center justify-between p-2.5 rounded-lg bg-[#f5f9ff] border border-[#e3f2fd]"
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 <span className="text-lg shrink-0">
@@ -283,13 +281,13 @@ export default function FinancePage() {
                                 </span>
                                 <button
                                   onClick={() => handleEdit(t)}
-                                  className="opacity-0 group-hover:opacity-100 text-xs text-[#42a5f5] hover:bg-[#e3f2fd] px-1.5 py-0.5 rounded transition-all"
+                                  className="text-xs text-[#42a5f5] hover:bg-[#e3f2fd] px-1.5 py-0.5 rounded transition-all"
                                 >
                                   编辑
                                 </button>
                                 <button
                                   onClick={() => handleDelete(t.id)}
-                                  className="opacity-0 group-hover:opacity-100 p-0.5 text-red-400 hover:bg-red-50 rounded transition-all"
+                                  className="p-0.5 text-red-400 hover:bg-red-50 rounded transition-all"
                                 >
                                   <Trash2 className="size-3" />
                                 </button>
@@ -303,12 +301,13 @@ export default function FinancePage() {
               </div>
             )}
           </div>
-        </div>
 
-        {/* Edit panel */}
-        <div>
-          {editing ? (
-            <div className="bg-white rounded-card border border-[#e3f2fd] p-5 space-y-4">
+      {/* Edit modal */}
+      {editing && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-40" onClick={resetForm} />
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-sm bg-white rounded-card border border-[#e3f2fd] shadow-xl z-50 max-h-[85vh] overflow-y-auto">
+            <div className="p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-[#1565c0] text-sm">
                   {editId ? "编辑记录" : "新增记录"}
@@ -443,15 +442,9 @@ export default function FinancePage() {
                 </button>
               )}
             </div>
-          ) : (
-            <div className="bg-white rounded-card border border-[#e3f2fd] p-5 text-center">
-              <div className="py-8 text-sm text-[#90a4ae]">
-                点击「记一笔」按钮<br />添加新的收支记录
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </>
+      )}
 
       {managerOpen && (
         <CategoryManager
