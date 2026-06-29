@@ -21,6 +21,7 @@ export interface Entry {
   ai_summary?: string;
   ai_tags?: string[];
   ai_category?: string;
+  is_private?: boolean;
   entry_date: string;
   created_at: string;
   updated_at: string;
@@ -202,6 +203,25 @@ export interface BetaConfig {
   share_api_enabled: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// 实验室 —— 内测白名单成员（两个独立权限）
+export interface BetaUser {
+  id: string;
+  user_id: string;
+  lab_access: boolean;
+  share_api: boolean;
+  created_at: string;
+}
+
+// 管理后台 —— 用户列表项
+export interface AdminUserRow {
+  id: string;
+  email: string | null;
+  created_at: string;
+  last_sign_in_at: string | null;
+  labAccess: boolean;
+  shareApi: boolean;
 }
 
 // 实验室 —— 智能题库

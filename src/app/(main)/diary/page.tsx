@@ -21,6 +21,10 @@ import {
   Pencil,
   MessageCircle,
   Send,
+  Lock,
+  Unlock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
@@ -57,6 +61,8 @@ export default function DiaryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  // 私密笔记默认隐藏内容，仅显示锁定占位；开启后临时显示（刷新后恢复隐藏）
+  const [showPrivate, setShowPrivate] = useState(false);
 
   const {
     categories: userCategories,
@@ -238,6 +244,32 @@ export default function DiaryPage() {
     loadEntries();
   };
 
+  // 切换单条笔记的私密状态
+  const togglePrivate = async (entry: Entry) => {
+    const next = !entry.is_private;
+    setEntries((prev) =>
+      prev.map((e) => (e.id === entry.id ? { ...e, is_private: next } : e))
+    );
+    setDetailEntry((prev) =>
+      prev && prev.id === entry.id ? { ...prev, is_private: next } : prev
+    );
+    await supabase.from("entries").update({ is_private: next }).eq("id", entry.id);
+  };
+
+  // 批量切换某一天所有笔记的私密状态
+  const toggleDayPrivate = async (date: string, makePrivate: boolean) => {
+    if (!user) return;
+    setEntries((prev) =>
+      prev.map((e) => (e.entry_date === date ? { ...e, is_private: makePrivate } : e))
+    );
+    await supabase
+      .from("entries")
+      .update({ is_private: makePrivate })
+      .eq("user_id", user.id)
+      .eq("entry_date", date)
+      .is("deleted_at", null);
+  };
+
   // 保存
   const handleSave = async () => {
     if (!user) return;
@@ -363,6 +395,8 @@ export default function DiaryPage() {
     ])
   );
 
+  const privateCount = entries.filter((e) => e.is_private).length;
+
   if (loading && !loaded) {
     return (
       <div className="flex items-center justify-center h-64 text-[#90a4ae] text-sm">
@@ -379,6 +413,21 @@ export default function DiaryPage() {
           <BookOpen className="size-5" /> 📔 笔记灵感库
         </h2>
         <div className="flex items-center gap-2">
+          {/* 显示/隐藏私密笔记 */}
+          {privateCount > 0 && (
+            <button
+              onClick={() => setShowPrivate((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition-colors ${
+                showPrivate
+                  ? "bg-[#42a5f5] text-white hover:bg-[#1e88e5]"
+                  : "bg-[#f0f6ff] text-[#5c8dc9] hover:bg-[#e3f2fd]"
+              }`}
+              title={showPrivate ? "重新隐藏私密笔记" : "临时显示私密笔记"}
+            >
+              {showPrivate ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+              {showPrivate ? "隐藏私密" : `显示私密 (${privateCount})`}
+            </button>
+          )}
           {/* 视图切换 */}
           <div className="flex bg-[#f0f6ff] rounded-lg p-0.5">
             <button
@@ -749,25 +798,45 @@ export default function DiaryPage() {
           ) : (
             Object.entries(groupedByDate)
               .sort(([a], [b]) => b.localeCompare(a))
-              .map(([date, dayEntries]) => (
+              .map(([date, dayEntries]) => {
+                const allPrivate = dayEntries.every((e) => e.is_private);
+                return (
                 <div key={date}>
                   <div className="flex items-center gap-2 mb-3">
                     <span className="text-sm font-semibold text-[#1565c0]">
                       {formatDate(date)}
                     </span>
                     <span className="text-xs text-[#90a4ae]">{dayEntries.length} 条</span>
+                    <button
+                      onClick={() => toggleDayPrivate(date, !allPrivate)}
+                      className="ml-auto flex items-center gap-1 text-[11px] text-[#90a4ae] hover:text-[#1565c0] transition-colors"
+                      title={allPrivate ? "取消隐藏这一天" : "隐藏这一天的全部笔记"}
+                    >
+                      {allPrivate ? (
+                        <>
+                          <Unlock className="size-3" /> 取消隐藏
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="size-3" /> 隐藏这天
+                        </>
+                      )}
+                    </button>
                   </div>
                   <div className="space-y-2">
                     {dayEntries.map((entry) => (
                       <EntryCardTimeline
                         key={entry.id}
                         entry={entry}
+                        masked={!!entry.is_private && !showPrivate}
                         onOpen={() => openDetail(entry)}
+                        onUnhide={() => togglePrivate(entry)}
                       />
                     ))}
                   </div>
                 </div>
-              ))
+                );
+              })
           )}
         </div>
       )}
@@ -793,7 +862,9 @@ export default function DiaryPage() {
               <div key={entry.id} className="break-inside-avoid">
                 <EntryCardMasonry
                   entry={entry}
+                  masked={!!entry.is_private && !showPrivate}
                   onOpen={() => openDetail(entry)}
+                  onUnhide={() => togglePrivate(entry)}
                 />
               </div>
             ))
@@ -834,6 +905,7 @@ export default function DiaryPage() {
           onDeleteComment={deleteComment}
           onEdit={() => startEdit(detailEntry)}
           onDelete={() => softDelete(detailEntry.id)}
+          onTogglePrivate={() => togglePrivate(detailEntry)}
           onClose={closeDetail}
         />
       )}
@@ -842,14 +914,49 @@ export default function DiaryPage() {
 }
 
 // 时间轴卡片
-function EntryCardTimeline({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
+function EntryCardTimeline({
+  entry,
+  masked,
+  onOpen,
+  onUnhide,
+}: {
+  entry: Entry;
+  masked: boolean;
+  onOpen: () => void;
+  onUnhide: () => void;
+}) {
   const typeIcon = entry.type === "image" ? "🖼️" : entry.type === "link" ? "🔗" : "📝";
+  const time = new Date(entry.created_at).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  if (masked) {
+    return (
+      <div className="bg-[#f8fafc] rounded-card border border-dashed border-[#cfd8dc] p-4 flex items-center gap-3 text-[#90a4ae]">
+        <Lock className="size-4 shrink-0" />
+        <span className="text-sm">这条笔记已隐藏</span>
+        <span className="text-[10px]">{time}</span>
+        <button
+          onClick={onUnhide}
+          className="ml-auto flex items-center gap-1 text-[11px] text-[#5c8dc9] hover:text-[#1565c0] transition-colors"
+        >
+          <Unlock className="size-3" /> 取消隐藏
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
       onClick={onOpen}
       className="bg-white rounded-card border border-[#e3f2fd] p-4 hover:border-[#42a5f5]/30 hover:shadow-md transition-all cursor-pointer group"
     >
+      {entry.is_private && (
+        <div className="flex items-center gap-1 text-[10px] text-[#f9a825] mb-1.5">
+          <Lock className="size-3" /> 私密（仅你可见）
+        </div>
+      )}
       <div className="flex items-start gap-3">
         <div className="shrink-0 w-12 text-center">
           <div className="text-2xl">{entry.mood || typeIcon}</div>
@@ -931,14 +1038,44 @@ function EntryCardTimeline({ entry, onOpen }: { entry: Entry; onOpen: () => void
 }
 
 // 瀑布流卡片
-function EntryCardMasonry({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
+function EntryCardMasonry({
+  entry,
+  masked,
+  onOpen,
+  onUnhide,
+}: {
+  entry: Entry;
+  masked: boolean;
+  onOpen: () => void;
+  onUnhide: () => void;
+}) {
   const typeIcon = entry.type === "image" ? "🖼️" : entry.type === "link" ? "🔗" : "📝";
+
+  if (masked) {
+    return (
+      <div className="bg-[#f8fafc] rounded-card border border-dashed border-[#cfd8dc] p-4 flex items-center gap-2 text-[#90a4ae]">
+        <Lock className="size-4 shrink-0" />
+        <span className="text-sm">这条笔记已隐藏</span>
+        <button
+          onClick={onUnhide}
+          className="ml-auto flex items-center gap-1 text-[11px] text-[#5c8dc9] hover:text-[#1565c0] transition-colors"
+        >
+          <Unlock className="size-3" /> 取消隐藏
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
       onClick={onOpen}
       className="bg-white rounded-card border border-[#e3f2fd] p-3 hover:border-[#42a5f5]/30 hover:shadow-md transition-all cursor-pointer group"
     >
+      {entry.is_private && (
+        <div className="flex items-center gap-1 text-[10px] text-[#f9a825] mb-1.5">
+          <Lock className="size-3" /> 私密（仅你可见）
+        </div>
+      )}
       {/* 图片 */}
       {entry.type === "image" && entry.media_urls?.[0] && (
         <img
@@ -1016,6 +1153,7 @@ function EntryDetailModal({
   onDeleteComment,
   onEdit,
   onDelete,
+  onTogglePrivate,
   onClose,
 }: {
   entry: Entry;
@@ -1028,6 +1166,7 @@ function EntryDetailModal({
   onDeleteComment: (id: string) => void;
   onEdit: () => void;
   onDelete: () => void;
+  onTogglePrivate: () => void;
   onClose: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -1164,6 +1303,24 @@ function EntryDetailModal({
             </>
           ) : (
             <>
+              <button
+                onClick={onTogglePrivate}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm mr-auto transition-colors ${
+                  entry.is_private
+                    ? "bg-[#fff3e0] text-[#e65100] hover:bg-[#ffe0b2]"
+                    : "bg-[#f0f6ff] text-[#5c8dc9] hover:bg-[#e3f2fd]"
+                }`}
+              >
+                {entry.is_private ? (
+                  <>
+                    <Unlock className="size-3.5" /> 取消私密
+                  </>
+                ) : (
+                  <>
+                    <Lock className="size-3.5" /> 设为私密
+                  </>
+                )}
+              </button>
               <button
                 onClick={() => setConfirmDelete(true)}
                 className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm bg-red-50 text-red-500 hover:bg-red-100 transition-colors"

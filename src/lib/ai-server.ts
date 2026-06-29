@@ -50,6 +50,16 @@ export async function resolveAIConfig(
     .maybeSingle();
   if (!beta?.admin_user_id) return null;
 
+  // 共享 API 权限校验：管理员本人，或被单独授予 share_api 的用户，才能用共享 Key
+  if (userId !== beta.admin_user_id) {
+    const { data: betaUser } = await adminClient
+      .from("beta_users")
+      .select("share_api")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!betaUser?.share_api) return null;
+  }
+
   // 纵深防御：再确认该 admin_user_id 对应的确是管理员邮箱（RLS 已限管理员写）
   const { data: adminUser, error: adminErr } = await adminClient.auth.admin.getUserById(
     beta.admin_user_id

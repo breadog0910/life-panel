@@ -1284,3 +1284,89 @@
 | `src/app/(main)/finance/page.tsx` | 改为加载整年数据 + 派生当月 + 接入 `<FinanceCharts>` |
 
 **验证：** `tsc --noEmit` exit=0。
+
+---
+
+### 2026-06-29 #52 — 用户管理 + 内测白名单（控制实验室访问 & 共享 API）
+
+**用户诉求：** "我想要知道哪些用户登了我的网站，可以给他们安排内测的权限"。确认范围：① 用应用内管理页查看用户；② 内测白名单**同时**控制「实验室访问」与「共享 API Key 使用」。
+
+**实现：**
+- **新增白名单表 `beta_users`**（`supabase/migrate-beta-users.sql`）：每个被授权用户一行，`user_id` 唯一引用 `auth.users(... ON DELETE CASCADE)`。RLS：登录用户只能读到「自己是否在白名单」一行用于前端 gating；管理员邮箱可读全部 + 增删（实际写操作走服务端 service-role）。
+- **管理后台 API `/api/admin/users`**（service-role + 校验 caller email === 管理员邮箱）：
+  - `GET`：枚举全部注册用户（分页 `auth.admin.listUsers`），返回邮箱 / 注册时间 / 最近登录时间 + 是否在白名单，按最近登录倒序。
+  - `POST`：`{ userId, enabled }` 切换某用户内测状态（开 → upsert `beta_users`，关 → delete）。
+- **用户管理页 `/lab/users`**（仅管理员可见）：列出所有用户，每人一个「内测」开关（乐观更新 + 失败回滚），顶部显示总数 / 已开通数 + 刷新。入口加在实验室首页右上「用户管理」按钮（紧邻「内测设置」）。
+- **实验室访问 gating（`src/app/(main)/lab/layout.tsx` 新增 client 布局）**：非管理员且不在白名单的用户访问 `/lab` 及任意子页，统一显示「实验室正在内测中」提示，不再能进入题库等功能。
+- **共享 Key 白名单校验（`src/lib/ai-server.ts` 的 `resolveAIConfig`）**：在回退使用管理员共享 Key 前，校验请求者在 `beta_users` 或为管理员本人，否则返回 `null`（此前只要开了共享，任何登录用户都能蹭管理员 Key）。
+
+**新增/修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `supabase/migrate-beta-users.sql` | 新增：`beta_users` 白名单表 + RLS |
+| `src/app/api/admin/users/route.ts` | 新增：列用户 / 切换内测（service-role + 管理员校验） |
+| `src/app/(main)/lab/users/page.tsx` | 新增：用户管理页（列表 + 内测开关） |
+| `src/app/(main)/lab/layout.tsx` | 新增：非白名单非管理员 gating 实验室访问 |
+| `src/app/(main)/lab/page.tsx` | 实验室首页加「用户管理」入口 |
+| `src/lib/ai-server.ts` | `resolveAIConfig` 加 `beta_users` 白名单校验 |
+| `src/types/database.ts` | 新增 `BetaUser` / `AdminUserRow` 类型 |
+
+**上线前需做：** 在 Supabase SQL Editor 运行 `supabase/migrate-beta-users.sql`（以及尚未执行的 `supabase/migrate-entry-comments.sql`）。
+
+**验证：** `tsc --noEmit` exit=0。
+
+---
+
+### 2026-06-29 #53 — 笔记私密隐藏（防尴尬 · 整天/单条 + 显示开关）
+
+**用户诉求：** "可以选择将某一天我的笔记进行隐藏，即表面上看不到我写的什么，防止写了一些私密的我每次看都很尴尬"。确认范围：① 隐藏粒度「整天 + 单条都支持」；② 查看方式「一个『显示』开关」（无需密码，默认隐藏）。
+
+**实现：**
+- **新增字段 `entries.is_private`**（`supabase/migrate-entry-private.sql`，`BOOLEAN NOT NULL DEFAULT false` + 索引）。
+- **默认遮罩**：私密笔记在时间轴 / 瀑布流里只显示一张虚线「🔒 这条笔记已隐藏」占位卡片，不展示任何内容 / 图片 / 标签，且不可点开。
+- **一个全局「显示私密」开关**：仅当存在私密笔记时出现在标题栏（`显示私密 (N)` ↔ `隐藏私密`）。打开后私密笔记临时按正常卡片显示（带「🔒 私密（仅你可见）」标记），刷新页面后自动恢复隐藏。无需密码。
+- **单条切换**：笔记详情弹窗底部新增「设为私密 / 取消私密」按钮。
+- **整天批量**：时间轴每个日期标题右侧新增「🔒 隐藏这天 / 🔓 取消隐藏」，一键把那天全部笔记设为/取消私密（按 `user_id + entry_date` 批量更新，含未加载的）。
+- 切换均**乐观更新**本地状态，编辑/新建逻辑不动（`is_private` 默认 false 且不被编辑保存覆盖）。
+
+**新增/修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `supabase/migrate-entry-private.sql` | 新增：`entries.is_private` 字段 + 索引 |
+| `src/types/database.ts` | `Entry` 加 `is_private?` |
+| `src/app/(main)/diary/page.tsx` | 显示私密开关 + 单条/整天切换 + 卡片遮罩占位 + 详情私密按钮 |
+
+**上线前需做：** 在 Supabase SQL Editor 运行 `supabase/migrate-entry-private.sql`。
+
+**验证：** `tsc --noEmit` exit=0。
+
+---
+
+### 2026-06-29 #54 — 单条解除隐藏修复 + 内测/共享 API 权限拆分 + 内测设置并入用户管理
+
+**用户诉求：** "没办法单条解除隐藏；用户管理和 api 权限要分开来，即可以选择给用户开通内测也可以选择给不给他共享 api，把那个内测设置直接和用户管理合并一下"。
+
+**实现：**
+- **修复单条解除隐藏**：私密笔记被遮罩后无法点开、只能开全局「显示私密」。现给虚线占位卡片右侧加「🔓 取消隐藏」按钮，直接调 `togglePrivate` 解除单条私密（时间轴 + 瀑布流两种卡片都加）。
+- **内测 / 共享 API 拆成两个独立权限**（推翻 #52 的合并设计）：`beta_users` 由「一行 = 完整内测」改为两个独立布尔列 `lab_access`（可访问实验室）、`share_api`（可借用共享 Key），每个用户可分别开关。
+  - 迁移用 default-true-then-false 技巧：`ADD COLUMN ... NOT NULL DEFAULT true` 把旧白名单行回填为 true（保留原完整内测行为），再 `ALTER COLUMN ... SET DEFAULT false` 让之后新行默认不授予、按需逐项开通。幂等可重跑。
+  - `/api/admin/users` GET 返回每用户 `labAccess` / `shareApi`；POST 改为 `{ userId, field, enabled }` 按字段 upsert（只更新该列，新行另一列取默认 false，旧行另一列保留原值）。
+  - gating 同步拆分：`lab/layout.tsx` 查 `lab_access`；`ai-server.ts` 的 `resolveAIConfig` 查 `share_api`。
+- **内测设置并入用户管理**：删除独立的 `/lab/beta` 页，把全局「把我的 API 借给大家用」总开关搬到 `/lab/users` 顶部（写 `beta_config.share_api_enabled`）。用户列表每人两个开关：「内测」(lab_access) + 「共享 API」(share_api)，乐观更新 + 失败回滚。总开关关闭时给出提示（即使勾了某人共享 API 也暂不可用）。实验室首页移除「内测设置」入口，仅保留「用户管理」。
+
+**新增/修改文件：**
+| 文件 | 操作 |
+|------|------|
+| `supabase/migrate-beta-users.sql` | `beta_users` 加 `lab_access` / `share_api` 两列（default-true-then-false 回填） |
+| `src/types/database.ts` | `BetaUser` 加两列；`AdminUserRow` 把 `isBeta` 换成 `labAccess` / `shareApi` |
+| `src/app/api/admin/users/route.ts` | GET 返回两标志；POST 改为按 `field` 切换单项权限 |
+| `src/app/(main)/lab/users/page.tsx` | 顶部并入全局共享总开关；每用户两个独立开关 |
+| `src/app/(main)/lab/beta/page.tsx` | 删除（合并进用户管理） |
+| `src/app/(main)/lab/page.tsx` | 移除「内测设置」入口 |
+| `src/app/(main)/lab/layout.tsx` | gating 改查 `lab_access` |
+| `src/lib/ai-server.ts` | `resolveAIConfig` 改查 `share_api` |
+| `src/app/(main)/diary/page.tsx` | 私密占位卡片加「取消隐藏」按钮 |
+
+**上线前需做：** 在 Supabase SQL Editor **重跑** `supabase/migrate-beta-users.sql`（加两列）；尚未执行的 `supabase/migrate-entry-private.sql`（#53）也要跑。
+
+**验证：** `tsc --noEmit` exit=0。
